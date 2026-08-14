@@ -7,6 +7,7 @@ DSH（DeepSeek Harness）社区插件集合。每个插件位于仓库根下的�
 | 目录 | 包名 | 版本 | 作用 |
 | --- | --- | --- | --- |
 | [`side column/`](side column/README.md) | `dsh-usage-column` | 0.1.0 | DSH 用量侧栏：Web 界面右侧（可一键切左侧）实时显示账户余额、本会话 API 消耗、运行指标、费用分解与上下文窗口 |
+| [`custom inference strength slider/`](custom inference strength slider/README.md) | `@deepseek-ai/dsh-client-liang` | 1.0.0 | 自定义推理强度滑块：31 级「滑动变祖器」面板，拖动滑块联动当前会话推理强度（off / high / max） |
 
 ### side column · 用量侧栏（dsh-usage-column）
 
@@ -20,6 +21,16 @@ DSH（DeepSeek Harness）社区插件集合。每个插件位于仓库根下的�
 - 随包附带 `dsh-usage` 命令行：终端直接查余额（无需网关运行）
 
 详细说明（安装、数据口径、价格覆盖、已知限制）见 [side column/README.md](side column/README.md)。
+
+### custom inference strength slider · 自定义推理强度滑块（@deepseek-ai/dsh-client-liang）
+
+DSH 客户端插件：把社区趣味项目「滑动变祖器」移植为**推理强度调节界面**。拖动 31 级滑块，人像从「小难梁」连续演化到「梁祖」，推理强度按区间自动写入当前会话（`off` / `high` / `max`）。
+
+- **推理强度联动**：滑块 0–9 → `Off`，10–19 → `High`，20–30 → `Max`，通过 DSH 官方通道 `sessions.selectModel` 写入当前会话
+- **视觉演化动画**：241 帧插值视频随滑块连续 seek（WebM/MP4 双格式回退；视频素材不随仓库分发，需自行获取，见子目录 README）
+- **入口与开关**：模型菜单 →「推理等级」打开面板；设置 > 通用设置可关闭，恢复官方三档推理强度
+
+详细说明（安装、素材来源、移除）见 [custom inference strength slider/README.md](custom inference strength slider/README.md)。
 
 ## 安装
 

@@ -1,0 +1,27 @@
+{
+  "name": "@deepseek-ai/dsh-client-liang",
+  "version": "1.0.0",
+  "private": true,
+  "description": "滑动变祖器：31 级梁系强度校准器（Liang Intensity Calibrator）——DSH 客户端插件，移植自 Lichtspektrum/liang-intensity-calibrator",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": {
+      "default": "./lib/client.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web"
+    }
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "react": "^18.2.0",
+    "@deepseek-ai/cordis": "^4.0.1"
+  }
+}
