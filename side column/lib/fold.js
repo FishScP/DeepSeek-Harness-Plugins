@@ -139,23 +139,38 @@ export function foldStats(events) {
 
 /**
  * 一次折叠出 usage + stats + lastRequest。
- * lastRequest：最后一次带 usage 的模型请求的实测输入
+ * lastRequest：最后一次「对话级」模型请求的实测输入
  * （inputTokens + cacheReadTokens + cacheWriteTokens，即 DeepSeek 计费
- *  prompt_tokens 口径）与事件时间；无此类事件时为 null。
+ *  prompt_tokens 口径）、事件时间与请求所用 provider/model；
+ * 尾部辅助请求（标题生成/摘要等：输入 < 2048 且输出 < 512）不选为
+ * lastRequest，避免污染"当前上下文占用"口径；全部被过滤时退化为
+ * 最后一条；无此类事件时为 null。
  */
 export function foldSession(events) {
   const usage = foldUsage(events);
   const stats = foldStats(events);
   let lastRequest = null;
+  let fallback = null;
   if (Array.isArray(events)) {
     for (const event of events) {
       if (event === null || typeof event !== "object" || event.type !== "assistant/message") continue;
       const usageOf = event.data?.usage;
       if (typeof usageOf !== "object" || usageOf === null) continue;
       const input = pos(usageOf.inputTokens) + pos(usageOf.cacheReadTokens) + pos(usageOf.cacheWriteTokens);
-      if (input + pos(usageOf.outputTokens) <= 0) continue;
-      lastRequest = { input, at: typeof event.time === "number" ? event.time : 0 };
+      const output = pos(usageOf.outputTokens);
+      if (input + output <= 0) continue;
+      const source = event.data?.message?.source;
+      const rec = {
+        input,
+        at: typeof event.time === "number" ? event.time : 0,
+        provider: source !== null && typeof source === "object" && typeof source.provider === "string" ? source.provider : null,
+        model: source !== null && typeof source === "object" && typeof source.model === "string" ? source.model : null
+      };
+      fallback = rec;
+      if (input < 2048 && output < 512) continue; // 辅助请求（标题生成等），不作为上下文口径
+      lastRequest = rec;
     }
   }
+  if (lastRequest === null) lastRequest = fallback;
   return { usage, stats, lastRequest };
 }

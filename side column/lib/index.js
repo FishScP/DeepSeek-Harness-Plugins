@@ -181,7 +181,7 @@ const MODEL_INFO_TIMEOUT_MS = 3_000;
 const FOLD_CACHE_MS = 10_000;
 const DEFAULT_CONTEXT_WINDOW = 1_000_000;
 /** 插件版本号：面板头部会显示该值，用于确认网关已加载最新主机代码。 */
-const PLUGIN_VERSION = "0.4.0";
+const PLUGIN_VERSION = "0.5.0";
 
 /** 远程服务实例：注册 "usageColumn" cordis 服务，网关按 manifest 分发端点。 */
 class UsageColumnGateway extends TypertRemoteService {
@@ -430,9 +430,10 @@ class UsageColumnGateway extends TypertRemoteService {
   }
 
   /**
-   * 上下文窗口：官方 resolveModelInfo 优先，缺省用设置默认 1M。
-   * 已用优先级（v0.4 起，对齐官方口径）：
-   *   ① 日志中最后一次模型请求的实测输入（DeepSeek 计费 prompt_tokens 口径）；
+   * 上下文窗口：优先按「最后一次对话请求」的真实模型解析（v0.5），
+   * 其次当前模型选择，再次设置默认 1M。
+   * 已用优先级（对齐官方口径）：
+   *   ① 日志中最后一次对话级模型请求的实测输入（计费 prompt_tokens 口径）；
    *   ② tokenMeter 会话表面估算（live 会话）；
    *   ③ 历史总量近似（末选，UI 标注 ≈）。
    */
@@ -463,9 +464,12 @@ class UsageColumnGateway extends TypertRemoteService {
     if (used === null) return null;
     let windowSize = this.settingsContextWindow();
     const llm = this.ctx.get("llm");
-    if (llm !== undefined && typeof provider === "string" && typeof model === "string") {
+    // 请求真实模型优先（assistant/message.source），其次当前模型选择
+    const requestProvider = lastRequest?.provider ?? provider;
+    const requestModel = lastRequest?.model ?? model;
+    if (llm !== undefined && typeof requestProvider === "string" && typeof requestModel === "string") {
       try {
-        const info = await llm.resolveModelInfo(provider, model, AbortSignal.timeout(MODEL_INFO_TIMEOUT_MS));
+        const info = await llm.resolveModelInfo(requestProvider, requestModel, AbortSignal.timeout(MODEL_INFO_TIMEOUT_MS));
         const context = info?.context?.contextWindow;
         if (typeof context === "number" && Number.isFinite(context) && context > 0) windowSize = Math.round(context);
       } catch {

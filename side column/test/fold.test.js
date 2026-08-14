@@ -75,14 +75,6 @@ test("foldSession 组合折叠", () => {
   assert.equal(stats.llmMs, 0); // 无 step/start 时不产生时长
 });
 
-test("foldSession 组合折叠", () => {
-  const events = [msg(0, 0, { inputTokens: 5, outputTokens: 7 })];
-  const { usage, stats } = foldSession(events);
-  assert.equal(usage.inputTokens, 5);
-  assert.equal(usage.outputTokens, 7);
-  assert.equal(stats.llmMs, 0); // 无 step/start 时不产生时长
-});
-
 test("foldSession 记录最后一次请求的实测输入（计费 prompt_tokens 口径）", () => {
   const events = [
     msg(0, 0, { inputTokens: 100, cacheReadTokens: 900, outputTokens: 50 }, 1000),
@@ -98,6 +90,35 @@ test("foldSession 无 usage 事件时 lastRequest 为 null", () => {
   assert.equal(foldSession([]).lastRequest, null);
   assert.equal(foldSession([{ type: "user/message", data: {} }]).lastRequest, null);
   assert.equal(foldSession([msg(0, 0, undefined)]).lastRequest, null);
+});
+
+test("foldSession 跳过尾部辅助请求（标题生成等小请求）选最后一次对话请求", () => {
+  const withSource = (turn, step, usage, time, model) => ({
+    type: "assistant/message",
+    time,
+    data: { turn, step, message: { role: "assistant", content: [], source: { kind: "model", provider: "deepseek-official", model } }, usage }
+  });
+  const events = [
+    // 对话请求：输入大
+    withSource(0, 0, { inputTokens: 50_000, cacheReadTokens: 150_000, outputTokens: 800 }, 1000, "deepseek-v4-flash"),
+    // 尾部辅助请求：输入/输出极小（标题生成特征）
+    withSource(1, 0, { inputTokens: 300, outputTokens: 40 }, 2000, "deepseek-v4-flash")
+  ];
+  const { lastRequest } = foldSession(events);
+  assert.equal(lastRequest.input, 200_000); // 50_000 + 150_000，跳过 300 的小请求
+  assert.equal(lastRequest.at, 1000);
+  assert.equal(lastRequest.model, "deepseek-v4-flash");
+  assert.equal(lastRequest.provider, "deepseek-official");
+});
+
+test("foldSession 全部为辅助请求时退化为最后一条", () => {
+  const events = [
+    msg(0, 0, { inputTokens: 100, outputTokens: 20 }, 1000),
+    msg(1, 0, { inputTokens: 300, outputTokens: 40 }, 2000)
+  ];
+  const { lastRequest } = foldSession(events);
+  assert.equal(lastRequest.input, 300);
+  assert.equal(lastRequest.at, 2000);
 });
 
 test("isTokenDelta 语义", () => {
