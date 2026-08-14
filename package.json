@@ -1,0 +1,48 @@
+{
+  "name": "dsh-usage-column",
+  "version": "0.1.0",
+  "description": "DSH 用量侧栏：在 Web 界面右侧（可切左侧）显示 DeepSeek 账户余额、当前会话 API 消耗（输入缓存未命中/命中、输出）与可用百分比条。",
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "dsh": {
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-api-gateway"
+      ]
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "license": "MIT",
+  "bin": {
+    "dsh-usage": "./bin/dsh-usage.js"
+  },
+  "scripts": {
+    "test": "node --test test/",
+    "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/math.js && node --check bin/dsh-usage.js"
+  },
+  "dependencies": {
+    "@deepseek-ai/dsh-credentials": "^0.1.0-rc.6",
+    "@deepseek-ai/dsh-typert-protocol": "^0.1.0-rc.6",
+    "yaml": "^2.9.0",
+    "zod": "^4.0.0"
+  },
+  "files": [
+    "lib",
+    "bin",
+    "assets",
+    "README.md",
+    "README.en.md",
+    "LICENSE",
+    "cordis.patch.yml"
+  ]
+}
