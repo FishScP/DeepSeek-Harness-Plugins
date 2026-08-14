@@ -42,7 +42,8 @@ The cost is an estimate; the official bill prevails.
 1. Install the package (the bundle layer auto-mounts it, no config editing)
 
    ```bash
-   dsh plugin --profile web add github:FishScP/DeepSeek-Harness-Plugins
+   git clone https://github.com/FishScP/DeepSeek-Harness-Plugins.git
+   dsh plugin --profile web add "<path\to\DeepSeek-Harness-Plugins\side column>"
    ```
 
    Local paths work too:

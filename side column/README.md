@@ -45,15 +45,16 @@ DSH 插件：在 DSH Web 界面右侧（可一键切换到左侧）挂一个**�
 外部用户若要复刻或安装本插件，需满足以下三个前提：
 
 1. **DSH 版本兼容**：插件基于当前部署（DSH 0.1.0-rc.x，2026-08）的契约编写；若您的 DSH 版本差异较大，个别接口（如 typert manifest、sessionQuery 签名）可能需要小幅适配，详见「兼容性说明」。
-2. **仓库地址**：下方安装命令已使用实际仓库地址 `github:FishScP/DeepSeek-Harness-Plugins`（插件位于仓库根，安装后自动挂载）；本地路径安装同样支持。
+2. **仓库结构**：插件位于仓库 `DeepSeek-Harness-Plugins` 的 `side column/` 子目录；由于 pnpm 的 git 依赖协议不支持子目录，请先克隆仓库，再按「安装」小节以本地路径安装。
 3. **配置凭证**：需已配置 `DEEPSEEK_API_KEY`（在 DSH 设置 → 模型页写入，或 `~/.dsh/.credentials.yaml` 中配置）。未配置时侧栏仅显示本地会话统计，并给出提示。
 
 ## 安装
 
-1. 安装本包（bundle 层自动挂载，无需编辑配置文件）
+1. 克隆仓库并安装本包（bundle 层自动挂载，无需编辑配置文件）
 
    ```bash
-   dsh plugin --profile web add github:FishScP/DeepSeek-Harness-Plugins
+   git clone https://github.com/FishScP/DeepSeek-Harness-Plugins.git
+   dsh plugin --profile web add "<path\to\DeepSeek-Harness-Plugins\side column>"
    ```
 
    本地路径安装同样支持：
@@ -114,7 +115,7 @@ dsh plugin --profile web remove dsh-usage-column
 - **运行时依赖**：`@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-typert-protocol`（均为 ^0.1.0-rc.6）、`yaml`、`zod`（v4）；客户端侧注入 `@deepseek-ai/dsh-client-runtime`、`@deepseek-ai/dsh-client-locale`、`@deepseek-ai/dsh-api-gateway`。
 - **接口耦合点**：typert manifest（`lib/index.js` 的 `MANIFEST`）、`sessionQuery.readSession` 签名、`credentials.resolve`、`llm.resolveModelInfo`、`tokenMeter.measure`、设置命名空间 `usage-column`。DSH 版本差异较大时，这些接口可能需要小幅适配。
 - **已知限制**：见下文「已知限制」小节。
-- **仓库地址**：安装命令使用实际仓库地址 `github:FishScP/DeepSeek-Harness-Plugins`（插件即仓库根内容）。
+- **仓库地址**：https://github.com/FishScP/DeepSeek-Harness-Plugins（插件位于 `side column/` 子目录；pnpm git 依赖协议不支持子目录，请克隆后以本地路径安装，见「安装」）。
 
 ## 已知限制
 
