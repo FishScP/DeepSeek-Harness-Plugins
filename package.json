@@ -27,7 +27,7 @@
     "dsh-usage": "./bin/dsh-usage.js"
   },
   "scripts": {
-    "test": "node --test test/",
+    "test": "node --test",
     "check": "node --check lib/index.js && node --check lib/client.js && node --check lib/math.js && node --check bin/dsh-usage.js"
   },
   "dependencies": {
