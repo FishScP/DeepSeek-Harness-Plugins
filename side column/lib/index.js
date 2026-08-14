@@ -181,7 +181,7 @@ const MODEL_INFO_TIMEOUT_MS = 3_000;
 const FOLD_CACHE_MS = 10_000;
 const DEFAULT_CONTEXT_WINDOW = 1_000_000;
 /** 插件版本号：面板头部会显示该值，用于确认网关已加载最新主机代码。 */
-const PLUGIN_VERSION = "0.5.0";
+const PLUGIN_VERSION = "0.6.0";
 
 /** 远程服务实例：注册 "usageColumn" cordis 服务，网关按 manifest 分发端点。 */
 class UsageColumnGateway extends TypertRemoteService {
@@ -265,7 +265,8 @@ class UsageColumnGateway extends TypertRemoteService {
 
   liveUsageOf(sessionId) {
     const value = this.liveUsageMap().get(sessionId);
-    if (value === undefined) return { ...EMPTY_USAGE, at: 0 };
+    // 注意：返回对象必须与 usageViewSchema（strict）完全一致，不得携带多余字段
+    if (value === undefined) return { ...EMPTY_USAGE };
     return {
       inputTokens: value.inputTokens,
       cacheReadTokens: value.cacheReadTokens,

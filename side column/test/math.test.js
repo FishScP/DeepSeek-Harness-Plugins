@@ -109,7 +109,7 @@ test("formatMoney 币种前缀与小数位", () => {
   assert.equal(formatMoney(110), "¥110.00");
   assert.equal(formatMoney(0.001), "¥0.0010");
   assert.equal(formatMoney(1.5, "USD"), "USD 1.50");
-  assert.equal(formatMoney(NaN), "—");
+  assert.equal(formatMoney(NaN), "--.--");
 });
 
 test("formatTokens 紧凑格式", () => {
@@ -117,12 +117,12 @@ test("formatTokens 紧凑格式", () => {
   assert.equal(formatTokens(999), "999");
   assert.equal(formatTokens(1234), "1.2k");
   assert.equal(formatTokens(1_234_567), "1.23M");
-  assert.equal(formatTokens(NaN), "—");
+  assert.equal(formatTokens(NaN), "--");
 });
 
 test("formatDuration 时长紧凑格式", () => {
   assert.equal(formatDuration(500), "500ms");
   assert.equal(formatDuration(1500), "1.5s");
   assert.equal(formatDuration(65000), "1m 05s");
-  assert.equal(formatDuration(NaN), "—");
+  assert.equal(formatDuration(NaN), "--");
 });

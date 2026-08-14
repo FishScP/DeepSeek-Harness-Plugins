@@ -101,29 +101,30 @@ window.__ModuleLoader__.load({
 		}
 
 		// ── 数字格式化（与主机 math.js 口径一致；bundle 内不引外部模块）─────────
+		// 数据不可用时返回占位串（-- / --.--），配合降级渲染使用。
 		function formatMoney(value, currency) {
-			if (!Number.isFinite(value)) return "—";
+			if (!Number.isFinite(value)) return "--.--";
 			const abs = Math.abs(value);
 			const digits = abs > 0 && abs < 0.01 ? 4 : 2;
 			const prefix = currency === "CNY" ? "¥" : currency + " ";
 			return prefix + value.toFixed(digits);
 		}
 		function formatTokens(value) {
-			if (!Number.isFinite(value) || value < 0) return "—";
+			if (!Number.isFinite(value) || value < 0) return "--";
 			if (value < 1000) return String(value);
 			if (value < 1e6) return trimZero((value / 1e3).toFixed(1)) + "k";
 			return trimZero((value / 1e6).toFixed(2)) + "M";
 		}
 		/** 上下文窗口量：1_000_000 → "1.0M"，1234 → "1.2K"。 */
 		function formatWindow(value) {
-			if (!Number.isFinite(value) || value < 0) return "—";
+			if (!Number.isFinite(value) || value < 0) return "--";
 			if (value < 1000) return String(value);
 			if (value < 1e6) return trimZero((value / 1e3).toFixed(1)) + "K";
 			const m = value / 1e6;
 			return (Number.isInteger(m) ? m.toFixed(1) : trimZero(m.toFixed(2))) + "M";
 		}
 		function formatDuration(ms) {
-			if (!Number.isFinite(ms) || ms < 0) return "—";
+			if (!Number.isFinite(ms) || ms < 0) return "--";
 			if (ms < 1000) return Math.round(ms) + "ms";
 			const totalSeconds = ms / 1000;
 			if (totalSeconds < 60) return trimZero(totalSeconds.toFixed(1)) + "s";
@@ -144,7 +145,7 @@ window.__ModuleLoader__.load({
 			return Math.max(0, Math.min(100, value));
 		}
 		function formatTime(at) {
-			if (!Number.isFinite(at) || at <= 0) return "—";
+			if (!Number.isFinite(at) || at <= 0) return "--:--:--";
 			const d = new Date(at);
 			const pad = (n) => String(n).padStart(2, "0");
 			return pad(d.getHours()) + ":" + pad(d.getMinutes()) + ":" + pad(d.getSeconds());
@@ -168,6 +169,7 @@ window.__ModuleLoader__.load({
 			loading: "正在读取用量…",
 			retry: "重试",
 			error: "暂时无法读取用量数据。",
+			degraded: "数据暂不可用，自动重试中…",
 			balanceTitle: "账户余额",
 			available: "可用余额",
 			granted: "赠金余额",
@@ -219,6 +221,7 @@ window.__ModuleLoader__.load({
 			loading: "Reading usage…",
 			retry: "Retry",
 			error: "Usage data is temporarily unavailable.",
+			degraded: "Data temporarily unavailable, retrying…",
 			balanceTitle: "Account Balance",
 			available: "Available",
 			granted: "Granted",
@@ -310,6 +313,26 @@ window.__ModuleLoader__.load({
 					result: codec("dsh-usage-column#Ok")
 				}
 			]
+		};
+
+		// ── 占位快照：数据不可用（error）时渲染同构卡片结构，数值全部为占位 ──
+		const PLACEHOLDER_SNAP = {
+			version: null,
+			sessionId: "placeholder",
+			model: null,
+			at: 0,
+			balance: { ok: true, currency: "CNY", total: NaN, granted: NaN, toppedUp: NaN, usablePercent: null, error: null, source: null },
+			usage: { inputTokens: NaN, cacheReadTokens: NaN, cacheWriteTokens: NaN, outputTokens: NaN, reasoningTokens: NaN, steps: NaN },
+			cost: { hit: NaN, miss: NaN, output: NaN, total: NaN },
+			priceUsed: null,
+			stats: { turns: NaN, steps: NaN, llmMs: NaN, toolMs: NaN, ttftMs: NaN, ttftSteps: NaN, decodeMs: NaN, decodeTokens: NaN },
+			context: null,
+			hitRate: null,
+			tokenPerSec: null,
+			baseline: NaN,
+			sessionPercent: null,
+			asOfSeq: -1,
+			debug: null
 		};
 
 		// ── 共享开合状态（侧栏按钮与面板之间）─────────────────────────────────
@@ -631,15 +654,10 @@ window.__ModuleLoader__.load({
 				if (state.status === "loading") {
 					return react.createElement("p", { className: "ucc-status" }, t("loading"));
 				}
-				if (state.status === "error") {
-					return react.createElement(
-						"div",
-						{ className: "ucc-failure" },
-						react.createElement("span", null, t("error") + " " + state.message),
-						react.createElement("button", { type: "button", onClick: refresh }, t("retry"))
-					);
-				}
-				const snap = state.snap;
+				// 数据不可用（error）时渲染占位卡片结构（全部数值为占位串），
+				// 数据到位后由 30s 轮询自动同步为真实值，不再显示错误横幅。
+				const degraded = state.status === "error";
+				const snap = degraded ? PLACEHOLDER_SNAP : state.snap;
 				const balance = snap.balance;
 				const usage = snap.usage;
 				const hasSession = snap.sessionId !== null && snap.sessionId !== undefined;
@@ -700,8 +718,8 @@ window.__ModuleLoader__.load({
 
 					const tokenRate = snap.tokenPerSec !== null && snap.tokenPerSec !== undefined
 						? (snap.tokenPerSec < 10 ? snap.tokenPerSec.toFixed(1) : String(Math.round(snap.tokenPerSec))) + " t/s"
-						: "—";
-					const hitRateText = snap.hitRate !== null && snap.hitRate !== undefined ? snap.hitRate.toFixed(1) + "%" : "—";
+						: "--";
+					const hitRateText = snap.hitRate !== null && snap.hitRate !== undefined ? snap.hitRate.toFixed(1) + "%" : "--";
 
 					sessionCard = react.createElement(
 						"section",
@@ -714,7 +732,7 @@ window.__ModuleLoader__.load({
 							react.createElement(Row, { label: t("inputHit"), value: formatTokens(usage.cacheReadTokens) }),
 							react.createElement(Row, { label: t("output"), value: formatTokens(usage.outputTokens) }),
 							usage.reasoningTokens > 0 ? react.createElement(Row, { label: t("reasoning"), value: formatTokens(usage.reasoningTokens) }) : null,
-							react.createElement(Row, { label: t("steps"), value: String(usage.steps) })
+							react.createElement(Row, { label: t("steps"), value: Number.isFinite(usage.steps) ? String(usage.steps) : "--" })
 						),
 						stats != null ? react.createElement(
 							"div",
@@ -763,7 +781,7 @@ window.__ModuleLoader__.load({
 					null,
 					balanceCard,
 					sessionCard,
-					react.createElement("p", { className: "ucc-note" }, t("priceNote"))
+					react.createElement("p", { className: "ucc-note" }, degraded ? t("degraded") : t("priceNote"))
 				);
 			};
 

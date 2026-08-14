@@ -106,26 +106,26 @@ export function percentLevel(pct) {
   return "low";
 }
 
-/** 金额格式化：CNY 用 ¥，其余币种前置代码；2 位小数（小金额升到 4 位）。 */
+/** 金额格式化：CNY 用 ¥，其余币种前置代码；2 位小数（小金额升到 4 位）；不可用时返回 "--.--"。 */
 export function formatMoney(value, currency = "CNY") {
-  if (!Number.isFinite(value)) return "—";
+  if (!Number.isFinite(value)) return "--.--";
   const abs = Math.abs(value);
   const digits = abs > 0 && abs < 0.01 ? 4 : 2;
   const prefix = currency === "CNY" ? "¥" : currency + " ";
   return prefix + value.toFixed(digits);
 }
 
-/** tokens 数量的紧凑格式：1234 → "1.2k"，1234567 → "1.2M"。 */
+/** tokens 数量的紧凑格式：1234 → "1.2k"，1234567 → "1.2M"；不可用时返回 "--"。 */
 export function formatTokens(value) {
-  if (!Number.isFinite(value) || value < 0) return "—";
+  if (!Number.isFinite(value) || value < 0) return "--";
   if (value < 1000) return String(value);
   if (value < 1e6) return trimZero((value / 1e3).toFixed(1)) + "k";
   return trimZero((value / 1e6).toFixed(2)) + "M";
 }
 
-/** 时长的紧凑格式：500 → "500ms"，1500 → "1.5s"，65000 → "1m 05s"。 */
+/** 时长的紧凑格式：500 → "500ms"，1500 → "1.5s"，65000 → "1m 05s"；不可用时返回 "--"。 */
 export function formatDuration(ms) {
-  if (!Number.isFinite(ms) || ms < 0) return "—";
+  if (!Number.isFinite(ms) || ms < 0) return "--";
   if (ms < 1000) return Math.round(ms) + "ms";
   const totalSeconds = ms / 1000;
   if (totalSeconds < 60) return trimZero(totalSeconds.toFixed(1)) + "s";
