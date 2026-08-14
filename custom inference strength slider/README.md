@@ -83,4 +83,6 @@ custom inference strength slider/
 
 代码部分 MIT，Copyright (c) 2026 FishScP（与 DSH 一致）。视频素材权利归原作者所有，见上文素材来源。
 
+## 提示
+
 > 若按教程安装失败，请将仓库clone至本地，由DSH进行安装。
