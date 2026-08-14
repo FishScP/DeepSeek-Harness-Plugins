@@ -132,4 +132,6 @@ dsh plugin --profile web remove dsh-usage-column
 
 MIT
 
+## 提示
+
 > 若按教程安装失败，请将仓库clone至本地，由DSH进行安装。
