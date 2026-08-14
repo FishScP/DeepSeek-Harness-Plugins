@@ -114,6 +114,7 @@ dsh plugin --profile web remove dsh-usage-column
 - **验证版本**：基于 DSH 0.1.0-rc.x（2026-08 部署）契约编写与验证，Node.js ≥ 22（CI 使用 node 22）。
 - **运行时依赖**：`@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-typert-protocol`（均为 ^0.1.0-rc.6）、`yaml`、`zod`（v4）；客户端侧注入 `@deepseek-ai/dsh-client-runtime`、`@deepseek-ai/dsh-client-locale`、`@deepseek-ai/dsh-api-gateway`。
 - **接口耦合点**：typert manifest（`lib/index.js` 的 `MANIFEST`）、`sessionQuery.readSession` 签名、`credentials.resolve`、`llm.resolveModelInfo`、`tokenMeter.measure`、设置命名空间 `usage-column`。DSH 版本差异较大时，这些接口可能需要小幅适配。
+- **CI**：`side column/.github/workflows/ci.yml`（语法检查 + 单元测试）。
 - **已知限制**：见下文「已知限制」小节。
 - **仓库地址**：https://github.com/FishScP/DeepSeek-Harness-Plugins（插件位于 `side column/` 子目录；pnpm git 依赖协议不支持子目录，请克隆后以本地路径安装，见「安装」）。
 
@@ -130,3 +131,5 @@ dsh plugin --profile web remove dsh-usage-column
 ## License
 
 MIT
+
+> 若按教程安装失败，请将仓库clone至本地，由DSH进行安装。

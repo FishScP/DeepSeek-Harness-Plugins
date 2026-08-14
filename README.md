@@ -40,35 +40,12 @@ DSH 客户端插件：把社区趣味项目「滑动变祖器」移植为**推�
    git clone https://github.com/FishScP/DeepSeek-Harness-Plugins.git
    ```
 
-2. 安装插件（以 side column 为例，支持本地路径）：
+2. 各插件的安装方式不同，具体步骤见各自子目录 README：
 
-   ```bash
-   dsh plugin --profile web add "<repo-root>\side column"
-   ```
-
-   默认 profile 为 `web`，需要更改 profile 的请自行调整参数。
-
-3. 重启网关：
-
-   ```bash
-   dsh-restart
-   ```
-
-   刷新页面后生效：左侧栏底部「设置」旁出现 `¥` 按钮，点击即可打开用量侧栏。
+   - [side column/README.md](side column/README.md)（`dsh plugin` bundle 安装）
+   - [custom inference strength slider/README.md](custom inference strength slider/README.md)（手动安装）
 
 > **说明**：插件位于仓库子目录，而 pnpm 的 git 依赖协议（`github:<user>/<repo>`）不支持子目录安装，因此暂不支持直接从仓库 URL 安装插件；请使用「克隆 + 本地路径」方式，或将插件独立发布后直装。
-
-## 前置条件
-
-- **DSH 版本兼容**：插件基于当前部署（DSH 0.1.0-rc.x，2026-08）的契约编写；若您的 DSH 版本差异较大，个别接口（如 typert manifest、sessionQuery 签名）可能需要小幅适配。
-- **配置凭证**：各插件所需凭证（如 `DEEPSEEK_API_KEY`）请在 DSH 设置 → 模型页写入，或 `~/.dsh/.credentials.yaml` 中配置；未配置时侧栏仅显示本地会话统计。
-- **Node.js** ≥ 22（CI 使用 node 22）。
-
-## 兼容性说明
-
-- 验证版本：DSH 0.1.0-rc.x（2026-08 部署）。
-- 运行时依赖：`@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-typert-protocol`（^0.1.0-rc.6）、`yaml`、`zod`（v4）；客户端侧注入 `@deepseek-ai/dsh-client-runtime`、`@deepseek-ai/dsh-client-locale`、`@deepseek-ai/dsh-api-gateway`。
-- CI：`side column/.github/workflows/ci.yml`（语法检查 + 单元测试）。
 
 ## 免责声明
 

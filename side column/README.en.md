@@ -111,3 +111,5 @@ Community project, not affiliated with DeepSeek. Cost figures are estimates from
 ## License
 
 MIT
+
+> If the installation fails following the tutorial, please clone the repository locally and install it with DSH.
