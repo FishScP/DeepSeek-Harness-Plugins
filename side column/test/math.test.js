@@ -2,7 +2,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PRICING,
+  PRICING_BY_MODEL,
   modelTier,
+  modelPricing,
+  currentTier,
   resolvePrice,
   usageCost,
   usageCostBreakdown,
@@ -29,15 +32,46 @@ test("resolvePrice 默认按档返回官方价格", () => {
   assert.deepEqual(resolvePrice("deepseek-reasoner"), DEFAULT_PRICING.reasoner);
 });
 
+test("resolvePrice V4 系列按模型与时段双档取价", () => {
+  assert.deepEqual(resolvePrice("deepseek-v4-flash", "offpeak"), PRICING_BY_MODEL["deepseek-v4-flash"].offpeak);
+  assert.deepEqual(resolvePrice("deepseek-v4-flash", "peak"), PRICING_BY_MODEL["deepseek-v4-flash"].peak);
+  assert.deepEqual(resolvePrice("deepseek-v4-pro", "offpeak"), PRICING_BY_MODEL["deepseek-v4-pro"].offpeak);
+  assert.deepEqual(resolvePrice("deepseek-v4-pro", "peak"), PRICING_BY_MODEL["deepseek-v4-pro"].peak);
+  // 带日期后缀的模型名同样匹配
+  assert.deepEqual(resolvePrice("deepseek-v4-pro-0813", "offpeak"), PRICING_BY_MODEL["deepseek-v4-pro"].offpeak);
+});
+
+test("modelPricing 模型名匹配", () => {
+  assert.equal(modelPricing("deepseek-v4-flash"), PRICING_BY_MODEL["deepseek-v4-flash"]);
+  assert.equal(modelPricing("deepseek-v4-pro"), PRICING_BY_MODEL["deepseek-v4-pro"]);
+  assert.equal(modelPricing("deepseek-chat"), null);
+  assert.equal(modelPricing(undefined), null);
+});
+
+test("currentTier 按北京时间判断高峰/空闲（9-12、14-18 为高峰）", () => {
+  // 直接构造北京时刻对应的 UTC：北京 h 点 = UTC (h-8+24)%24
+  const at = (hour) => new Date(Date.UTC(2026, 7, 15, (hour - 8 + 24) % 24));
+  assert.equal(currentTier(at(8)), "offpeak");   // 8:59 前
+  assert.equal(currentTier(at(9)), "peak");      // 9:00 起
+  assert.equal(currentTier(at(11)), "peak");
+  assert.equal(currentTier(at(12)), "offpeak");  // 12:00 结束
+  assert.equal(currentTier(at(13)), "offpeak");
+  assert.equal(currentTier(at(14)), "peak");     // 14:00 起
+  assert.equal(currentTier(at(17)), "peak");
+  assert.equal(currentTier(at(18)), "offpeak");  // 18:00 结束
+  assert.equal(currentTier(at(23)), "offpeak");
+  assert.equal(currentTier(at(0)), "offpeak");
+});
+
 test("resolvePrice 支持按模型全名覆盖", () => {
   const overrides = { "deepseek-chat": { hit: 1, miss: 2, output: 3 } };
-  assert.deepEqual(resolvePrice("deepseek-chat", overrides), { hit: 1, miss: 2, output: 3 });
-  assert.deepEqual(resolvePrice("deepseek-reasoner", overrides), DEFAULT_PRICING.reasoner);
+  assert.deepEqual(resolvePrice("deepseek-chat", "offpeak", overrides), { hit: 1, miss: 2, output: 3 });
+  assert.deepEqual(resolvePrice("deepseek-reasoner", "offpeak", overrides), DEFAULT_PRICING.reasoner);
 });
 
 test("resolvePrice 忽略非法覆盖值", () => {
   const overrides = { "deepseek-chat": { hit: -1, miss: "x", output: 3 } };
-  assert.deepEqual(resolvePrice("deepseek-chat", overrides), DEFAULT_PRICING.chat);
+  assert.deepEqual(resolvePrice("deepseek-chat", "offpeak", overrides), DEFAULT_PRICING.chat);
 });
 
 test("usageCost 按命中/未命中/输出三段计费", () => {

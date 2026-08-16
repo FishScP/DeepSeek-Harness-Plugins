@@ -1,0 +1,3 @@
+name: 锚定标准（上下文注入）
+description: '锚定标准改版：首轮仅 Minimal 工具对（bash + str_replace_editor）保持强锚定；晋升后按策略每轮（interval 为 1）或隔几轮注入 AGENTS.md 工作区指令内容，使语言与工作流规则持续生效。已内置视觉工具（see_image 等）。'
+order: 8

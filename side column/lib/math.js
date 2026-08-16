@@ -3,16 +3,34 @@
  * 无任何 cordis / DSH 依赖，供 lib/index.js、bin/dsh-usage.js 与单元测试直接引用。
  *
  * 价格单位：元 / 每百万 tokens。
- * 默认价格取自 DeepSeek 官方定价页（V3.2 档），并可在插件设置中覆盖；
- * 官方价格以 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/ 为准。
+ * v4 系列价格按模型细分，并分空闲/高峰两档（高峰 = 空闲 × 2）：
+ *   高峰时段 = 北京时间 9:00–12:00 与 14:00–18:00，其余为空闲时段。
+ * 官方价格以 https://api-docs.deepseek.com/zh-cn/quick_start/pricing/ 为准，
+ * 并可在插件设置中覆盖。
  */
 
-export const DEFAULT_PRICING = {
+/** V4 系列价格（元/百万 tokens，按模型 + 时段档）。 */
+export const PRICING_BY_MODEL = {
+  "deepseek-v4-flash": {
+    offpeak: { hit: 0.05, miss: 1.5, output: 4.5 },
+    peak: { hit: 0.1, miss: 3, output: 9 }
+  },
+  "deepseek-v4-pro": {
+    offpeak: { hit: 0.15, miss: 4.5, output: 13.5 },
+    peak: { hit: 0.3, miss: 9, output: 27 }
+  }
+};
+
+/** 其他模型的兜底价格（chat / reasoner 两档，单档价）。 */
+export const LEGACY_PRICING = {
   // deepseek-chat：输入(缓存命中) ¥0.2/M，输入(缓存未命中) ¥2/M，输出 ¥3/M
   chat: { hit: 0.2, miss: 2, output: 3 },
   // deepseek-reasoner：输入(缓存命中) ¥0.5/M，输入(缓存未命中) ¥4/M，输出 ¥16/M
   reasoner: { hit: 0.5, miss: 4, output: 16 },
 };
+
+/** 兼容别名。 */
+export const DEFAULT_PRICING = LEGACY_PRICING;
 
 /** 按模型名判定价格档：reasoner/r1 归推理档，其余归 chat 档。 */
 export function modelTier(modelName) {
@@ -21,11 +39,34 @@ export function modelTier(modelName) {
 }
 
 /**
+ * 按模型名匹配 V4 系列价格表；非 V4 系列返回 null。
+ * @param modelName 如 "deepseek-v4-flash" / "deepseek-v4-pro-0813"。
+ */
+export function modelPricing(modelName) {
+  if (typeof modelName !== "string" || modelName.length === 0) return null;
+  const name = modelName.toLowerCase();
+  if (name.includes("v4-pro")) return PRICING_BY_MODEL["deepseek-v4-pro"];
+  if (name.includes("v4-flash") || name.includes("v4")) return PRICING_BY_MODEL["deepseek-v4-flash"];
+  return null;
+}
+
+/**
+ * 当前计费时段档（按北京时间）：9:00–12:00 与 14:00–18:00 为高峰，其余空闲。
+ * @param now 默认当前时间；用 UTC+8 换算，不依赖服务器时区。
+ */
+export function currentTier(now = new Date()) {
+  const beijingHour = (now.getUTCHours() + 8) % 24;
+  const inPeak = (beijingHour >= 9 && beijingHour < 12) || (beijingHour >= 14 && beijingHour < 18);
+  return inPeak ? "peak" : "offpeak";
+}
+
+/**
  * 解析某模型的价格（元 / 每百万 tokens）。
  * @param modelName 模型名；为空时按 chat 档。
- * @param overrides 按模型全名的覆盖表 { "<model>": { hit, miss, output } }。
+ * @param tier 计费时段档："offpeak" | "peak"（V4 系列双档；非 V4 系列忽略）。
+ * @param overrides 按模型全名的覆盖表 { "<model>": { hit, miss, output } }（单档，优先于内置表）。
  */
-export function resolvePrice(modelName, overrides = {}) {
+export function resolvePrice(modelName, tier = "offpeak", overrides = {}) {
   if (typeof modelName === "string" && modelName.length > 0) {
     const exact = overrides[modelName];
     if (exact !== undefined && exact !== null && typeof exact === "object") {
@@ -35,7 +76,9 @@ export function resolvePrice(modelName, overrides = {}) {
       if (hit !== null && miss !== null && output !== null) return { hit, miss, output };
     }
   }
-  return { ...DEFAULT_PRICING[modelTier(modelName)] };
+  const byModel = modelPricing(modelName);
+  if (byModel !== null) return { ...byModel[tier === "peak" ? "peak" : "offpeak"] };
+  return { ...LEGACY_PRICING[modelTier(modelName)] };
 }
 
 /**

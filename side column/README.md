@@ -7,8 +7,9 @@ DSH 插件：在 DSH Web 界面右侧（可一键切换到左侧）挂一个**�
 - **账户余额**：可用 / 赠金 / 充值余额（赠金绿、充值蓝分色），来自官方公开接口 `GET https://api.deepseek.com/user/balance`；合成余额条，只示意相对大小
 - **本会话 API 消耗**：输入（缓存未命中 / 缓存命中）、输出（以及推理 tokens），由 DSH 会话日志直读折叠 + 运行期实时监听双通道累计（网关重启后历史仍完整）
 - **运行指标**：LLM 运行时间、工具调用时间、输出速率（token/s）、缓存命中率
-- **费用分解**：命中金额（绿）/ 未命中金额（橙）/ 输出金额（蓝）三类分色 + 三段相对比例条
-- **上下文窗口条**：第一行「xx% 已使用」，第二行「剩余 xxK 上下文」；已用量取**最近一次模型请求的实测输入**（DeepSeek 计费 `prompt_tokens` 口径，与官方 usage 页基本一致），窗口值取官方模型元数据（缺省 1M，可在设置覆盖）
+- **费用分解**：命中金额（绿）/ 未命中金额（橙）/ 输出金额（蓝）三类分色 + 三段相对比例条（均按**项目总金额**计）
+- **双总金额**：会话卡同时显示「**项目总金额**」（全会话累计）与「**自上次重置**」（重置基线至今的新增费用）
+- **上下文窗口条**：第一行「xx% 已使用」，第二行「剩余 xxK 上下文」；已用量取**最后一次对话级请求的实测输入**（DeepSeek 计费 `prompt_tokens` 口径，自动过滤标题生成等辅助小请求，与官方 usage 页基本一致），窗口值按**该请求的真实模型**解析官方元数据（缺省 1M，可在设置覆盖）
 - **布局**：右侧 = 一体化分栏（主界面自动让出宽度，与侧栏构成同一窗口）；左侧 = 覆盖 DSH 自带左侧栏
 
 > 注意：本项目参考命令默认指定 profile 为默认的 web，需要更改 profile 的请自行注意。
@@ -31,36 +32,32 @@ DSH 插件：在 DSH Web 界面右侧（可一键切换到左侧）挂一个**�
 | 会话 tokens | DSH 会话投影：累计日志中每个 `assistant/message` 事件的 `usage`（`inputTokens`=缓存未命中，`cacheReadTokens`=缓存命中，`outputTokens`=输出） |
 | 费用 | `输入未命中×未命中价 + 输入命中×命中价 + 输出×输出价`（元/百万 tokens）；默认价格见下表，可在设置覆盖 |
 
-默认价格表（取自[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)，单位：元/百万 tokens）：
+默认价格表（取自[官方定价页](https://api-docs.deepseek.com/zh-cn/quick_start/pricing/)，单位：元/百万 tokens；2026-08 调价后 V4 系列按模型与时段双档计费）：
 
-| 模型档 | 输入·缓存命中 | 输入·缓存未命中 | 输出 |
-| --- | --- | --- | --- |
-| deepseek-chat（含 v3.x / v4 系列） | 0.2 | 2 | 3 |
-| deepseek-reasoner / r1 系列 | 0.5 | 4 | 16 |
+| 模型 | 档位 | 输入·缓存命中 | 输入·缓存未命中 | 输出 |
+| --- | --- | --- | --- | --- |
+| deepseek-v4-flash | 空闲 | 0.05 | 1.5 | 4.5 |
+| deepseek-v4-flash | 高峰 | 0.10 | 3.0 | 9.0 |
+| deepseek-v4-pro | 空闲 | 0.15 | 4.5 | 13.5 |
+| deepseek-v4-pro | 高峰 | 0.30 | 9.0 | 27.0 |
+| deepseek-chat / reasoner 等（兜底） | 单档 | 0.2 / 0.5 | 2 / 4 | 3 / 16 |
 
-费用为估算值，实际扣费以官方账单为准。
-
-## 复刻前置条件
-
-外部用户若要复刻或安装本插件，需满足以下三个前提：
-
-1. **DSH 版本兼容**：插件基于当前部署（DSH 0.1.0-rc.x，2026-08）的契约编写；若您的 DSH 版本差异较大，个别接口（如 typert manifest、sessionQuery 签名）可能需要小幅适配，详见「兼容性说明」。
-2. **仓库结构**：插件位于仓库 `DeepSeek-Harness-Plugins` 的 `side column/` 子目录；由于 pnpm 的 git 依赖协议不支持子目录，请先克隆仓库，再按「安装」小节以本地路径安装。
-3. **配置凭证**：需已配置 `DEEPSEEK_API_KEY`（在 DSH 设置 → 模型页写入，或 `~/.dsh/.credentials.yaml` 中配置）。未配置时侧栏仅显示本地会话统计，并给出提示。
+- **时段定义**（北京时间）：高峰 = 9:00–12:00、14:00–18:00；其余为空闲时段；高峰价 = 空闲价 × 2。
+- **计费档自动切换**：默认 `auto`（按当前北京时间自动选档），可在设置中改为固定空闲/高峰档。
+- 费用为估算值（历史 tokens 按当前价重算），实际扣费以官方账单为准。
 
 ## 安装
 
-1. 克隆仓库并安装本包（bundle 层自动挂载，无需编辑配置文件）
+1. 安装本包（bundle 层自动挂载，无需编辑配置文件）
 
    ```bash
-   git clone https://github.com/FishScP/DeepSeek-Harness-Plugins.git
-   dsh plugin --profile web add "<path\to\DeepSeek-Harness-Plugins\side column>"
+   dsh plugin --profile web add github:<user>/dsh-usage-column
    ```
 
    本地路径安装同样支持：
 
    ```bash
-   dsh plugin --profile web add "<path\to\side column>"
+   dsh plugin --profile web add "D:\path\to\side column"
    ```
 
 2. 重启网关
@@ -109,15 +106,6 @@ usage-column:
 dsh plugin --profile web remove dsh-usage-column
 ```
 
-## 兼容性说明
-
-- **验证版本**：基于 DSH 0.1.0-rc.x（2026-08 部署）契约编写与验证，Node.js ≥ 22（CI 使用 node 22）。
-- **运行时依赖**：`@deepseek-ai/dsh-credentials`、`@deepseek-ai/dsh-typert-protocol`（均为 ^0.1.0-rc.6）、`yaml`、`zod`（v4）；客户端侧注入 `@deepseek-ai/dsh-client-runtime`、`@deepseek-ai/dsh-client-locale`、`@deepseek-ai/dsh-api-gateway`。
-- **接口耦合点**：typert manifest（`lib/index.js` 的 `MANIFEST`）、`sessionQuery.readSession` 签名、`credentials.resolve`、`llm.resolveModelInfo`、`tokenMeter.measure`、设置命名空间 `usage-column`。DSH 版本差异较大时，这些接口可能需要小幅适配。
-- **CI**：`side column/.github/workflows/ci.yml`（语法检查 + 单元测试）。
-- **已知限制**：见下文「已知限制」小节。
-- **仓库地址**：https://github.com/FishScP/DeepSeek-Harness-Plugins（插件位于 `side column/` 子目录；pnpm git 依赖协议不支持子目录，请克隆后以本地路径安装，见「安装」）。
-
 ## 已知限制
 
 - 余额依赖官方公开接口；接口变更或 Key 失效时侧栏显示错误提示，本地会话统计不受影响
@@ -131,7 +119,6 @@ dsh plugin --profile web remove dsh-usage-column
 ## License
 
 MIT
-
 ## 提示
 
 > 若按教程安装失败，请将仓库clone至本地，由DSH进行安装。

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import { credentialRef } from "@deepseek-ai/dsh-credentials";
-import { balancePercent, cacheHitRate, resolvePrice, sessionPercent, usageCostBreakdown } from "./math.js";
+import { balancePercent, cacheHitRate, currentTier, resolvePrice, sessionPercent, usageCostBreakdown } from "./math.js";
 import { EMPTY_USAGE, EMPTY_STATS, foldSession } from "./fold.js";
 
 /**
@@ -94,6 +94,10 @@ const snapshotViewSchema = z.object({
   hitRate: z.number().nullable(),
   tokenPerSec: z.number().nullable(),
   baseline: z.number().nullable(),
+  baselineCost: z.number().nullable(),
+  sinceBaseline: z.number().nullable(),
+  tier: z.enum(["offpeak", "peak"]),
+  tierMode: z.enum(["auto", "manual"]),
   sessionPercent: z.number().nullable(),
   asOfSeq: z.number().int(),
   at: z.number().int(),
@@ -116,8 +120,9 @@ const liveUsageSchema = z.object({
 
 const settingsSchema = z.object({
   pricingOverrides: z.record(z.string(), priceSchema).default({}),
-  baselines: z.record(z.string(), z.object({ balance: z.number(), at: z.number().int() }).strict()).default({}),
+  baselines: z.record(z.string(), z.object({ balance: z.number(), cost: z.number().nonnegative(), at: z.number().int() }).strict()).default({}),
   contextWindow: z.number().int().positive().default(1_000_000),
+  pricingTier: z.enum(["auto", "offpeak", "peak"]).default("auto"),
   liveUsage: z.record(z.string(), liveUsageSchema).default({})
 });
 
@@ -181,7 +186,7 @@ const MODEL_INFO_TIMEOUT_MS = 3_000;
 const FOLD_CACHE_MS = 10_000;
 const DEFAULT_CONTEXT_WINDOW = 1_000_000;
 /** 插件版本号：面板头部会显示该值，用于确认网关已加载最新主机代码。 */
-const PLUGIN_VERSION = "0.6.0";
+const PLUGIN_VERSION = "0.7.0";
 
 /** 远程服务实例：注册 "usageColumn" cordis 服务，网关按 manifest 分发端点。 */
 class UsageColumnGateway extends TypertRemoteService {
@@ -308,13 +313,22 @@ class UsageColumnGateway extends TypertRemoteService {
     return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : DEFAULT_CONTEXT_WINDOW;
   }
 
-  async persistBaseline(sessionId, balance) {
-    this._memBaselines.set(sessionId, balance);
+  /** 计费时段档设置："auto"（按北京时间自动）| "offpeak" | "peak"。 */
+  pricingTierSetting() {
+    const scope = this.settingsScope();
+    if (scope === null) return "auto";
+    const value = scope.get().pricingTier;
+    return value === "peak" || value === "offpeak" || value === "auto" ? value : "auto";
+  }
+
+  /** 基线记录：{ balance: 开始余额, cost: 基线建立时的会话累计费用 }。 */
+  async persistBaseline(sessionId, balance, cost) {
+    this._memBaselines.set(sessionId, { balance, cost });
     const scope = this.settingsScope();
     if (scope === null) return;
     try {
       const current = scope.get();
-      await scope.update({ baselines: { ...current.baselines, [sessionId]: { balance, at: Date.now() } } });
+      await scope.update({ baselines: { ...current.baselines, [sessionId]: { balance, cost, at: Date.now() } } });
     } catch {
       // settings 写入失败时保留内存基线，不影响本次统计
     }
@@ -514,7 +528,10 @@ class UsageColumnGateway extends TypertRemoteService {
     }
 
     const { model, provider } = this.currentSelection();
-    const priceUsed = resolvePrice(model ?? "", this.pricingOverrides());
+    const tierSetting = this.pricingTierSetting();
+    const tier = tierSetting === "auto" ? currentTier(new Date()) : tierSetting;
+    const tierMode = tierSetting === "auto" ? "auto" : "manual";
+    const priceUsed = resolvePrice(model ?? "", tier, this.pricingOverrides());
     const cost = usageCostBreakdown(usage, priceUsed);
     const hitRate = cacheHitRate(usage.cacheReadTokens, usage.inputTokens);
     const tokenPerSec = stats.decodeMs > 0 && stats.decodeTokens > 0
@@ -527,23 +544,28 @@ class UsageColumnGateway extends TypertRemoteService {
     }
 
     let baseline = null;
+    let baselineCost = null;
     let sessionPercentValue = null;
     if (sessionId !== undefined && balance.ok && Number.isFinite(balance.total)) {
       const key = sessionId;
       const stored = this._memBaselines.get(key);
       if (stored !== undefined) {
-        baseline = stored;
+        baseline = stored.balance;
+        baselineCost = typeof stored.cost === "number" ? stored.cost : 0;
       } else {
         const scope = this.settingsScope();
         const persisted = scope === null ? undefined : scope.get().baselines[key];
-        baseline = persisted !== undefined && typeof persisted.balance === "number" ? persisted.balance : balance.total;
-        if (persisted === undefined || typeof persisted.balance !== "number") {
-          await this.persistBaseline(key, balance.total);
+        const hasPersisted = persisted !== undefined && typeof persisted.balance === "number";
+        baseline = hasPersisted ? persisted.balance : balance.total;
+        baselineCost = hasPersisted && typeof persisted.cost === "number" ? persisted.cost : 0;
+        if (!hasPersisted) {
+          await this.persistBaseline(key, balance.total, cost.total);
         }
-        this._memBaselines.set(key, baseline);
+        this._memBaselines.set(key, { balance: baseline, cost: baselineCost });
       }
       sessionPercentValue = sessionPercent(cost.total, baseline);
     }
+    const sinceBaseline = baselineCost !== null ? Math.max(0, cost.total - baselineCost) : null;
 
     return {
       version: PLUGIN_VERSION,
@@ -558,6 +580,10 @@ class UsageColumnGateway extends TypertRemoteService {
       hitRate,
       tokenPerSec,
       baseline,
+      baselineCost,
+      sinceBaseline,
+      tier,
+      tierMode,
       sessionPercent: sessionPercentValue,
       asOfSeq: events - 1,
       at: Date.now(),

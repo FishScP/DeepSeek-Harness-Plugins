@@ -1,0 +1,9 @@
+# ci-control bundle patch.
+# 静态沉淀的「注入频次选择器」：本包通过 profile bundle 机制挂载。
+# 手动接入（本机开发）时，把下面的 insert 追加到 profile 的 cordis.patch.yml：
+# - insert:
+#     - id: ci-control
+#       name: ci-control
+- insert:
+    - id: ci-control
+      name: ci-control

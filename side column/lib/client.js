@@ -45,6 +45,10 @@ window.__ModuleLoader__.load({
 			".ucc-metric span{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
 			".ucc-metric b{font-variant-numeric:tabular-nums;font-weight:600;font-size:13px;line-height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
 			".ucc-cost{font-size:18px;font-weight:700;line-height:26px;font-variant-numeric:tabular-nums}",
+			".ucc-costRow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:2px 0 8px}",
+			".ucc-costCell{display:flex;flex-direction:column;gap:0;min-width:0}",
+			".ucc-costLabel{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
+			".ucc-costSub{font-size:14px;line-height:22px;color:var(--dsw-alias-label-secondary)}",
 			".ucc-tier{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px;margin-top:2px;word-break:break-all}",
 			".ucc-barWrap{display:flex;align-items:center;gap:8px;margin-top:8px}",
 			".ucc-bar{flex:1;height:8px;border-radius:999px;background:var(--dsw-alias-interactive-bg-hover-solid);overflow:hidden}",
@@ -89,6 +93,16 @@ window.__ModuleLoader__.load({
 			".ucc-genSwitch[data-on=true] .ucc-genSwitchThumb{transform:translateX(16px)}",
 			".ucc-genSwitch:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary);outline-offset:2px}",
 			"@media (prefers-reduced-motion:reduce){.ucc-panel{animation:none}.ucc-barFill{transition:none}}",
+			/* 侧栏底部操作区（sidebar.footer.action）布局覆盖：按钮左对齐、纵向排列、
+			   容器高度随按钮个数自适应（官方 .hHd-Xa_footerActions 为哈希类名，官方包升级后需复查）。 */
+			".hHd-Xa_footerActions{display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;gap:2px}",
+			".hHd-Xa_footerActions>*,.hHd-Xa_footerActions>*>*{flex:none;max-width:100%}",
+			/* 侧栏底部三个按钮（用量 / cordis / 设置）统一高度 36px、去除各自 margin，
+			   视觉等高（官方类名为哈希，官方包升级后需复查）。
+			   !important：官方按钮高度规则与覆盖规则特异性同级，无 !important 时
+			   胜负取决于 style 标签插入顺序，可能失效。 */
+			".hHd-Xa_footerActions>*{height:36px !important;box-sizing:border-box;margin:0 !important}",
+			".hHd-Xa_settingsArea>*{height:36px !important;box-sizing:border-box;margin:0 !important}",
 		].join("\n");
 
 		const cssTagId = "dsh-usage-column/usageColumn.css";
@@ -180,6 +194,11 @@ window.__ModuleLoader__.load({
 			missingKey: "未配置 DEEPSEEK_API_KEY：请在设置中配置凭证后刷新。",
 			apiError: "余额接口暂时不可用，仅展示本地会话统计。",
 			sessionTitle: "本会话消耗",
+			projectTotal: "项目总金额",
+			sinceBaseline: "自上次重置",
+			tierAuto: "自动",
+			tierPeak: "高峰档",
+			tierOffpeak: "空闲档",
 			inputMiss: "输入 · 缓存未命中",
 			inputHit: "输入 · 缓存命中",
 			output: "输出",
@@ -232,6 +251,11 @@ window.__ModuleLoader__.load({
 			missingKey: "DEEPSEEK_API_KEY is not configured. Configure the credential and refresh.",
 			apiError: "The balance API is unavailable; only local session stats are shown.",
 			sessionTitle: "This Session",
+			projectTotal: "Project total",
+			sinceBaseline: "Since reset",
+			tierAuto: "Auto",
+			tierPeak: "Peak",
+			tierOffpeak: "Off-peak",
 			inputMiss: "Input · cache miss",
 			inputHit: "Input · cache hit",
 			output: "Output",
@@ -330,6 +354,10 @@ window.__ModuleLoader__.load({
 			hitRate: null,
 			tokenPerSec: null,
 			baseline: NaN,
+			baselineCost: null,
+			sinceBaseline: null,
+			tier: "offpeak",
+			tierMode: "manual",
 			sessionPercent: null,
 			asOfSeq: -1,
 			debug: null
@@ -742,7 +770,23 @@ window.__ModuleLoader__.load({
 							react.createElement(Metric, { label: t("tokenRate"), value: tokenRate }),
 							react.createElement(Metric, { label: t("hitRate"), value: hitRateText })
 						) : null,
-						react.createElement("div", { className: "ucc-cost" }, formatMoney(costTotal, currency)),
+						// 双总金额：项目总金额（全会话累计）｜自上次重置基线至今
+						react.createElement(
+							"div",
+							{ className: "ucc-costRow" },
+							react.createElement(
+								"div",
+								{ className: "ucc-costCell" },
+								react.createElement("span", { className: "ucc-costLabel" }, t("projectTotal")),
+								react.createElement("div", { className: "ucc-cost" }, formatMoney(costTotal, currency))
+							),
+							react.createElement(
+								"div",
+								{ className: "ucc-costCell" },
+								react.createElement("span", { className: "ucc-costLabel" }, t("sinceBaseline")),
+								react.createElement("div", { className: "ucc-cost ucc-costSub" }, formatMoney(snap.sinceBaseline, currency))
+							)
+						),
 						react.createElement(
 							"dl",
 							{ className: "ucc-rows" },
@@ -763,7 +807,10 @@ window.__ModuleLoader__.load({
 							approximate: context.approximate === true
 						}) : null,
 						snap.priceUsed != null ? react.createElement("p", { className: "ucc-tier" },
-							t("priceTier") + "：" + (snap.model ?? "—") + " · 命中 " + snap.priceUsed.hit +
+							t("priceTier") + "：" + (snap.model ?? "—") + " · " +
+							(snap.tierMode === "auto" ? t("tierAuto") + " · " : "") +
+							(snap.tier === "peak" ? t("tierPeak") : t("tierOffpeak")) +
+							" · 命中 " + snap.priceUsed.hit +
 							" / 未命中 " + snap.priceUsed.miss + " / 输出 " + snap.priceUsed.output + " " + t("perMillion")) : null,
 						react.createElement(
 							"div",
@@ -923,7 +970,7 @@ window.__ModuleLoader__.load({
 			ctx.slots.inject("sidebar.footer.action", () => ctx.slots.register({
 				name: "sidebar.footer.action",
 				id: "usage-column",
-				order: 90,
+				order: -10,
 				label: () => t("nav")
 			}, (props) => react.createElement(SidebarAction, { t, wide: props.wide })));
 

@@ -1,0 +1,8 @@
+# dsh-plugin-vision —— profile 插件行（合并进你的 web profile 的 cordis.patch.yml）
+#
+# 将下面的 insert 追加到 C:\Users\Lenovo\.dsh\profiles\web\cordis.patch.yml 末尾，
+# 并确保插件包可被 DSH 解析（见 README「安装」：third_party + junction 或 npm 包）。
+
+- insert:
+    - id: dsh-plugin-vision
+      name: 'dsh-plugin-vision'
