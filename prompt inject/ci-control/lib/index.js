@@ -5,10 +5,11 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 /**
  * ci-control - host half（静态沉淀版）。
  *
- * 为「锚定标准（上下文注入）」预设的 context-injector 提供频次读写：
+ * 为「锚定标准（上下文注入）」预设的 context-injector 提供注入模式读写：
  *   - isActive(sessionId)：会话实际运行的 preset 是否为 anchored-standard-ci；
- *   - getInterval()：读 $DSH_HOME/.context-injector.json 的 interval（0=关闭，1..10）；
- *   - setInterval(n)：校验并写入该文件（下一次注入即生效，无需重启）。
+ *   - getConfig()：读 $DSH_HOME/.context-injector.json 的 { mode, interval }；
+ *   - setConfig({ mode, interval? })：校验并写入（下一次注入即生效，无需重启）。
+ * 模式：turns（每 interval 条消息）/ compaction（晋升后+每次压缩后）/ off（关闭）。
  * 文件读取失败一律返回 null/error，绝不抛错。
  */
 
@@ -16,11 +17,15 @@ export const name = "ci-control";
 export const inject = ["typert", "sessions"];
 
 const TARGET_PRESET = "anchored-standard-ci";
+const MODES = ["turns", "compaction", "off"];
 
 // ── wire schemas（zod v4，与 usage-column 同构）──────────────────────────────
 
 const activeResultSchema = z.object({ active: z.boolean() }).strict();
-const intervalResultSchema = z.object({ interval: z.number().int().nullable() }).strict();
+const configResultSchema = z.object({
+  mode: z.string().nullable(),
+  interval: z.number().int().nullable()
+}).strict();
 const setResultSchema = z.object({ ok: z.boolean(), error: z.string().nullable() }).strict();
 
 // ── typert manifest ──────────────────────────────────────────────────────────
@@ -42,22 +47,23 @@ const MANIFEST = {
       result: { mode: "strict", typeSymbol: "ci-control#Active", schema: activeResultSchema }
     },
     {
-      id: "ci-control#ciControl/getInterval",
+      id: "ci-control#ciControl/getConfig",
       service: "ciControl",
       namespace: "ciControl",
-      method: "getInterval",
+      method: "getConfig",
       invocation: { kind: "direct" },
       parameters: [],
-      result: { mode: "strict", typeSymbol: "ci-control#Interval", schema: intervalResultSchema }
+      result: { mode: "strict", typeSymbol: "ci-control#Config", schema: configResultSchema }
     },
     {
-      id: "ci-control#ciControl/setInterval",
+      id: "ci-control#ciControl/setConfig",
       service: "ciControl",
       namespace: "ciControl",
-      method: "setInterval",
+      method: "setConfig",
       invocation: { kind: "direct" },
       parameters: [
-        { name: "interval", wire: "interval", source: "json", codec: { mode: "strict", typeSymbol: "ci-control#interval", schema: z.number().int() } }
+        { name: "mode", wire: "mode", source: "json", codec: { mode: "strict", typeSymbol: "ci-control#mode", schema: z.string() } },
+        { name: "interval", wire: "interval", source: "json", acceptsUndefined: true, codec: { mode: "strict", typeSymbol: "ci-control#interval", schema: z.number().int().nullable() } }
       ],
       result: { mode: "strict", typeSymbol: "ci-control#SetResult", schema: setResultSchema }
     }
@@ -97,27 +103,45 @@ class CiControlGateway extends TypertRemoteService {
     return { active: preset === TARGET_PRESET };
   }
 
-  /** 读取频次覆盖文件；缺失/非法返回 null。 */
-  async getInterval() {
-    if (this._file === null) return { interval: null };
+  /** 读取注入模式文件；缺失/非法返回 null 字段（client 回退预设默认）。 */
+  async getConfig() {
+    if (this._file === null) return { mode: null, interval: null };
     try {
       const parsed = JSON.parse(readFileSync(this._file, "utf8"));
-      const v = parsed !== null && typeof parsed === "object" && typeof parsed.interval === "number" ? parsed.interval : null;
-      return { interval: Number.isInteger(v) && v >= 0 && v <= 10 ? v : null };
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) return { mode: null, interval: null };
+      const mode = typeof parsed.mode === "string" && MODES.includes(parsed.mode) ? parsed.mode : null;
+      const interval = typeof parsed.interval === "number" && Number.isInteger(parsed.interval) ? parsed.interval : null;
+      if (mode === null) {
+        // Legacy { interval }: turns mode (0 = off).
+        if (interval === 0) return { mode: "off", interval: null };
+        if (interval !== null && interval >= 1 && interval <= 100) return { mode: "turns", interval };
+        return { mode: null, interval: null };
+      }
+      if (mode === "turns") {
+        if (interval === null || interval < 1 || interval > 100) return { mode: null, interval: null };
+        return { mode, interval };
+      }
+      return { mode, interval: null };
     } catch {
-      return { interval: null };
+      return { mode: null, interval: null };
     }
   }
 
-  /** 校验并写入频次；非法输入或写入失败返回 { ok:false, error }。 */
-  async setInterval(interval) {
-    if (!Number.isInteger(interval) || interval < 0 || interval > 10) {
-      return { ok: false, error: "invalid interval (must be integer 0..10)" };
+  /** 校验并写入注入模式；非法输入或写入失败返回 { ok:false, error }。 */
+  async setConfig(mode, interval) {
+    if (typeof mode !== "string" || !MODES.includes(mode)) {
+      return { ok: false, error: "invalid mode (must be turns | compaction | off)" };
+    }
+    if (mode === "turns") {
+      if (typeof interval !== "number" || !Number.isInteger(interval) || interval < 1 || interval > 100) {
+        return { ok: false, error: "turns mode requires interval integer 1..100" };
+      }
     }
     if (this._file === null) return { ok: false, error: "no DSH_HOME" };
     try {
       if (this._dshHome !== null) mkdirSync(this._dshHome, { recursive: true });
-      writeFileSync(this._file, JSON.stringify({ interval }), "utf8");
+      const payload = mode === "turns" ? { mode, interval } : { mode };
+      writeFileSync(this._file, JSON.stringify(payload), "utf8");
       return { ok: true, error: null };
     } catch (error) {
       return { ok: false, error: String((error && error.message) || error) };

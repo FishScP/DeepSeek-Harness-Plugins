@@ -5,23 +5,22 @@
  * WHY: the anchored bootstrap keeps request #1 on the Minimal tool pair with
  * NO auto-injected context (both `agent-instructions` and `skill-catalog` are
  * stripped pre-promotion). After promotion the model should keep seeing the
- * workspace/user instruction files on a policy-controlled cadence — every
- * request (`interval: 1`, the default) or every N requests — so language and
- * workflow rules (e.g. Chinese reasoning + a plan-approval policy) keep
- * reaching the model without giving up the first-request anchor.
+ * workspace/user instruction files on a policy-controlled cadence, so
+ * language and workflow rules (e.g. Chinese reasoning + a plan-approval
+ * policy) keep reaching the model without giving up the first-request anchor.
  *
- * Difference from instruction-hint: this plugin injects the FILES' CONTENT
- * (bounded by maxBytes), not a one-shot "these files exist" hint, and it
- * re-injects periodically instead of once per session/epoch.
+ * Injection cadence — one of five modes:
+ *   mode: 'turns'      — inject every `interval` ROUNDS. One round = one user
+ *                        instruction OR one model text reply (user/message and
+ *                        tool-call-free assistant/message events); tool-call
+ *                        intermediate messages do NOT count.
+ *   mode: 'compaction' — inject once right after promotion, then re-inject
+ *                        once after every `compaction/end` (the context
+ *                        rewrite), i.e. roughly once per compaction cycle.
+ *   mode: 'off'        — never inject.
  *
  * Behavior:
  *  - Pre-promotion requests get NOTHING (matches the anchored bootstrap).
- *  - After promotion, injection follows the configured cadence counted in
- *    CONVERSATION TURNS, not model steps: `interval: 1` injects once per
- *    user turn (multi-step tool chains inside one turn inject at most once),
- *    `2` every other turn, `3` every third, `4` every fourth, `0` disables.
- *    When the pre-step payload carries no `turn` (unexpected), counting falls
- *    back to per-step so the plugin never stalls.
  *  - The injected user message contains the bounded content of the found
  *    instruction files:
  *      - user-global: `$DSH_HOME/AGENTS.md`
@@ -30,10 +29,13 @@
  *        (a directory containing `.git`, or the cwd itself).
  *  - `compaction/end` resets the per-session counters so the cadence
  *    restarts after a context rewrite.
- *  - A user override file `$DSH_HOME/.context-injector.json` ({ "interval": N },
- *    N = 1 every turn, 2 every other turn, … 0 disables injection) is re-read
- *    before every injection and overrides the config `interval`, so the
- *    in-UI frequency picker takes effect on the next request.
+ *  - A user override file `$DSH_HOME/.context-injector.json` is re-read
+ *    before every injection and overrides the config. Formats:
+ *      { "mode": "turns", "interval": 5 }   every 5 rounds
+ *      { "mode": "compaction" }             after promotion, then per compaction
+ *      { "mode": "off" }                    disabled
+ *      legacy: { "interval": N }            turns mode, every N rounds (0 = off)
+ *    An invalid file falls back to the config.
  *  - A missing fs seam, unreadable file, or any plugin error degrades to no
  *    injection (never throws).
  *
@@ -46,7 +48,6 @@
 
 import { createEpochPromotion } from './compaction-epoch.mjs'
 import { readFile, stat } from 'node:fs/promises'
-import { join } from 'node:path'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'context-injector'
@@ -64,6 +65,9 @@ const USER_GLOBAL_CANDIDATE = 'AGENTS.md'
 
 const DEFAULT_MAX_BYTES = 4096
 
+/** Valid injection modes. */
+const MODES = new Set(['turns', 'compaction', 'off'])
+
 function parsePromoteOn(value) {
   if (value === undefined || value === 'either') return PROMOTE_EVENTS.either
   if (value === 'tool-call' || value === 'assistant-message') return PROMOTE_EVENTS[value]
@@ -72,8 +76,16 @@ function parsePromoteOn(value) {
 
 function parseInterval(value) {
   if (value === undefined) return 1
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-    throw new TypeError(`${name}: interval must be a positive integer; got ${JSON.stringify(value)}`)
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 100) {
+    throw new TypeError(`${name}: interval must be an integer 1..100; got ${JSON.stringify(value)}`)
+  }
+  return value
+}
+
+function parseMode(value) {
+  if (value === undefined) return 'turns'
+  if (typeof value !== 'string' || !MODES.has(value)) {
+    throw new TypeError(`${name}: mode must be one of "turns", "compaction", "off"; got ${JSON.stringify(value)}`)
   }
   return value
 }
@@ -130,28 +142,6 @@ async function readBoundedFile(filePath, maxSourceBytes, signal) {
   }
 }
 
-/**
- * Read the user's cadence override from `$DSH_HOME/.context-injector.json`
- * (written by the in-UI frequency picker). The override is re-read before
- * every injection, so a change applies to the next request without a restart.
- * Returns a non-negative integer (`0` disables injection) or undefined when
- * the file is missing or invalid (caller falls back to the config value).
- */
-async function readIntervalOverride() {
-  const dshHome = process.env.DSH_HOME ?? (process.env.USERPROFILE ? `${process.env.USERPROFILE}\\.dsh` : undefined)
-  if (dshHome === undefined) return undefined
-  try {
-    const raw = await readFile(joinPath(dshHome, '.context-injector.json'), { encoding: 'utf8' })
-    const parsed = JSON.parse(raw)
-    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
-    const value = parsed.interval
-    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > 10) return undefined
-    return value
-  } catch {
-    return undefined
-  }
-}
-
 /** Read bounded content from all present candidates in one directory. */
 async function presentInDir(dir, candidates, maxSourceBytes, signal) {
   const found = []
@@ -162,23 +152,78 @@ async function presentInDir(dir, candidates, maxSourceBytes, signal) {
   return found
 }
 
+/**
+ * Read the user's cadence override from `$DSH_HOME/.context-injector.json`
+ * (written by the in-UI frequency picker). Re-read before every injection, so
+ * a change applies to the next request without a restart. Returns an owned
+ * `{ mode, interval? }` object, or undefined when the file is missing/invalid
+ * (caller falls back to the config). Legacy `{ interval: N }` files map to
+ * turns mode (0 = off).
+ */
+async function readConfigOverride() {
+  const dshHome = process.env.DSH_HOME ?? (process.env.USERPROFILE ? `${process.env.USERPROFILE}\\.dsh` : undefined)
+  if (dshHome === undefined) return undefined
+  try {
+    const raw = await readFile(joinPath(dshHome, '.context-injector.json'), { encoding: 'utf8' })
+    const parsed = JSON.parse(raw)
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) return undefined
+    const interval = parsed.interval
+    const mode = parsed.mode
+    if (typeof mode === 'string' && MODES.has(mode)) {
+      if (mode === 'turns') {
+        if (typeof interval !== 'number' || !Number.isInteger(interval) || interval < 1 || interval > 100) return undefined
+        return { mode, interval }
+      }
+      return { mode }
+    }
+    // Legacy: { interval } with no mode. interval 0 = off.
+    if (typeof interval === 'number' && Number.isInteger(interval)) {
+      if (interval === 0) return { mode: 'off' }
+      if (interval >= 1 && interval <= 100) return { mode: 'turns', interval }
+    }
+    return undefined
+  } catch {
+    return undefined
+  }
+}
+
+/** Whether an assistant/message event carries tool-call blocks (intermediate step, not a reply). */
+function hasToolCallBlock(event) {
+  const msg = event && event.data && event.data.message
+  const content = msg && Array.isArray(msg.content) ? msg.content : []
+  return content.some((block) => block !== null && typeof block === 'object' && block.type === 'tool-call')
+}
+
 /** Register the periodic post-promotion context injector. */
 export function apply(ctx, config) {
   const promoteEvents = parsePromoteOn(config.promoteOn)
-  const interval = parseInterval(config.interval)
+  const configMode = parseMode(config.mode)
+  const configInterval = parseInterval(config.interval)
   const maxBytes = parseMaxBytes(config.maxBytes)
   const maxSourceBytes = parseMaxBytes(config.maxSourceBytes) // same positive check, sized per file
   const promotion = createEpochPromotion(promoteEvents)
 
-  /** sessionId -> { count, lastTurn, lastInjectedTurn } — turn counters (per session, in-memory). */
+  /** sessionId -> { count, injected, lastInjectedCount } (per session, in-memory). */
   const state = new Map()
 
   ctx.on('session/event', (session, event) => {
     promotion.observe(session, event)
-    // A compaction rewrites the model-visible surface: restart the injection
-    // cadence so the next request after re-promotion injects fresh.
-    if (event.type === 'compaction/end') {
-      state.set(session.id, { count: 0, lastTurn: undefined, lastInjectedTurn: undefined })
+    if (session === undefined || session.id === undefined) return
+    let entry = state.get(session.id)
+    if (entry === undefined) {
+      entry = { count: 0, injected: false, lastInjectedCount: -1 }
+      state.set(session.id, entry)
+    }
+    // One round = one user instruction OR one model text reply. Tool-call
+    // intermediate messages do not count. Compaction restarts the cadence.
+    if (event.type === 'user/message') {
+      entry.count += 1
+    } else if (event.type === 'assistant/message') {
+      if (!hasToolCallBlock(event)) entry.count += 1
+    } else if (event.type === 'compaction/end') {
+      entry.count = 0
+      entry.injected = false
+      entry.lastInjectedCount = -1
     }
   })
 
@@ -193,32 +238,34 @@ export function apply(ctx, config) {
     }
   }
 
-  ctx.on('agent/pre-step', async ({ agent, signal, turn }, next) => {
+  ctx.on('agent/pre-step', async ({ agent, signal }, next) => {
     const decision = await next()
     try {
       if (promotion.status(agent).promoted !== true) return decision
       const session = agent.session
       if (session === undefined) return decision
 
-      // Cadence override from the in-UI frequency picker (re-read per step).
-      const override = await readIntervalOverride()
-      if (override === 0) return decision
-      const effectiveInterval = override ?? interval
+      // Cadence override from the in-UI picker (re-read per step).
+      const override = await readConfigOverride()
+      const mode = override === undefined ? configMode : override.mode
+      const interval = override === undefined ? configInterval : (override.interval ?? configInterval)
+      if (mode === 'off') return decision
 
-      // Count in CONVERSATION TURNS: the counter advances only when `turn`
-      // changes, so a multi-step tool chain inside one turn counts once and
-      // injects at most once. Without a `turn` in the payload, fall back to
-      // per-step counting so the cadence never stalls.
-      const entry = state.get(session.id) ?? { count: 0, lastTurn: undefined, lastInjectedTurn: undefined }
-      const perTurn = typeof turn === 'number'
-      if (!perTurn || entry.lastTurn !== turn) {
-        entry.count += 1
-        if (perTurn) entry.lastTurn = turn
-      }
+      const entry = state.get(session.id) ?? { count: 0, injected: false, lastInjectedCount: -1 }
       state.set(session.id, entry)
-      if (perTurn && entry.lastInjectedTurn === turn) return decision
-      if (entry.count % effectiveInterval !== 0) return decision
-      if (perTurn) entry.lastInjectedTurn = turn
+
+      if (mode === 'compaction') {
+        // Inject once per epoch: right after promotion, and again after every
+        // compaction/end (the marker is reset there).
+        if (entry.injected) return decision
+        entry.injected = true
+      } else {
+        // turns mode: inject when the message round counter crosses the
+        // interval boundary; never twice for the same count.
+        if (entry.count % interval !== 0) return decision
+        if (entry.lastInjectedCount === entry.count) return decision
+        entry.lastInjectedCount = entry.count
+      }
 
       const cwd = session.header.cwd ?? process.cwd()
       const sections = []

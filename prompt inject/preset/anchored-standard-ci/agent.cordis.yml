@@ -91,20 +91,25 @@
 # Context injection (this variant's core difference): the anchored bootstrap
 # keeps the FIRST request on the Minimal tool pair with no injected context.
 # After promotion, `context-injector` re-injects the bounded content of the
-# user-global and project instruction files on a policy cadence counted in
-# CONVERSATION TURNS — `interval: 1` means once per user turn (multi-step
-# tool chains inside one turn inject at most once), `2` every other turn,
-# `3` every third, `4` every fourth — so AGENTS.md rules (language,
-# plan-approval workflow, memory policy) keep reaching the model without
-# giving up the first-request anchor. Pre-promotion requests get nothing;
-# `compaction/end` resets the cadence. The cadence can be overridden per user
-# via $DSH_HOME/.context-injector.json (written by the in-UI
-# frequency picker; 0 disables injection). See context-injector.mjs.
+# user-global and project instruction files on one of five modes:
+#   mode: 'turns'      — every `interval` ROUNDS; one round = one user
+#                        instruction OR one model text reply (tool-call
+#                        intermediate messages do not count). interval 5/11/15.
+#   mode: 'compaction' — once right after promotion, then once after every
+#                        compaction/end (context rewrite). DEFAULT.
+#   mode: 'off'        — never inject.
+# so AGENTS.md rules (language, plan-approval workflow, memory policy) keep
+# reaching the model without giving up the first-request anchor.
+# Pre-promotion requests get nothing. The cadence can be overridden per user
+# via $DSH_HOME/.context-injector.json (written by the in-UI picker:
+# { mode: 'turns', interval: 5 } | { mode: 'compaction' } | { mode: 'off' };
+# legacy { interval: N } maps to turns). See context-injector.mjs.
 - id: context-injector
   name: ./context-injector.mjs
   config:
     promoteOn: either
-    interval: 1
+    mode: compaction
+    interval: 5
     maxBytes: 4096
 
 # On-demand tool discovery (the tool-search pattern, local addition): the
