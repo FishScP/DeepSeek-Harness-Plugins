@@ -1,76 +1,76 @@
-# prompt inject 鈥?閿氬畾鏍囧噯鐨勪笂涓嬫枃娉ㄥ叆鏀圭増锛坅nchored-standard-ci锛?
+# prompt inject — 锚定标准的上下文注入改版（anchored-standard-ci）
 
-涓?[xiaobright/dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard) 鎻愪緵
-**銆屼笂涓嬫枃娉ㄥ叆銆嶆敼鐗堥璁?*锛氫繚鎸佸叾銆岄杞己閿氬畾銆嶈璁★紙绗竴璇锋眰鍙毚闇?Minimal 鐪熷疄宸ュ叿瀵?
-`bash` + `str_replace_editor`銆佸墺绂昏嚜鍔ㄤ笂涓嬫枃娉ㄥ叆锛夛紝鍦?*鏅嬪崌鍚庢寜瀵硅瘽杞瀹氭湡娉ㄥ叆
-AGENTS.md / CLAUDE.md 宸ヤ綔鍖烘寚浠ゅ唴瀹?*锛屽苟閰嶅涓€涓?*瀵硅瘽宸ュ叿琛岀殑娉ㄥ叆棰戞閫夋嫨鍣?*銆?
+为 [xiaobright/dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard) 提供
+**「上下文注入」改版预设**：保持其「首轮强锚定」设计（第一请求只暴露 Minimal 真实工具对
+`bash` + `str_replace_editor`、剥离自动上下文注入），在**晋升后按所选模式注入
+AGENTS.md / CLAUDE.md 工作区指令内容**，并配套一个**对话工具行的注入模式选择器**。
 
-> 瀹為獙鎬хぞ鍖洪」鐩紝闈?DeepSeek 瀹樻柟 preset銆?
+> 实验性社区项目，非 DeepSeek 官方 preset。
 
-## 鏍稿績鐩殑锛堣瑙ｅ喅浠€涔堥棶棰橈級
+## 核心目的（要解决什么问题）
 
-`dsh-anchored-standard` 鐨勯敋瀹氭満鍒惰棣栬疆杞ㄨ抗绋冲畾锛屼絾浠ｄ环鏄?**AGENTS.md 鍐呭涓嶅啀姣忚疆鑷姩娉ㄥ叆**
-锛堝畼鏂?`standard` 棰勮姣忚疆娉ㄥ叆锛岄敋瀹氶璁炬敼涓恒€屾彁绀?+ 妯″瀷鑷璇诲彇銆嶏級銆傚疄娴嬩腑妯″瀷甯镐笉璇诲彇锛?
-瀵艰嚧鐢ㄦ埛鐨勫叏灞€/宸ヤ綔鍖烘寚浠わ紙濡傦細涓枃鎬濈淮閾俱€佽鍒?瀹℃壒宸ヤ綔娴侊級鍦ㄩ敋瀹氭ā寮忎笅**鎸佺画澶辨晥**銆?
+`dsh-anchored-standard` 的锚定机制让首轮轨迹稳定，但代价是 **AGENTS.md 内容不再每轮自动注入**
+（官方 `standard` 预设每轮注入，锚定预设改为「提示 + 模型自觉读取」）。实测中模型常不读取，
+导致用户的全局/工作区指令（如：中文思维链、计划-审批工作流）在锚定模式下**持续失效**。
 
-鏈」鐩湪涓嶇牬鍧忛杞敋瀹氱殑鍓嶆彁涓嬫仮澶嶆寚浠ら€佽揪锛?
+本项目在不破坏首轮锚定的前提下恢复指令送达：
 
-| 闃舵 | 琛屼负 |
+| 阶段 | 行为 |
 |---|---|
-| 璇锋眰 #1锛堟湭鏅嬪崌锛?| 涓?anchored-standard 鐩稿悓锛氫粎 Minimal 宸ュ叿瀵癸紝**涓嶆敞鍏ヤ换浣曚笂涓嬫枃**锛堥敋瀹氫繚鐣欙級 |
-| 鏅嬪崌鍚庯紙棣栨宸ュ叿璋冪敤鎴栭娆″洖澶嶅悗锛?| `context-injector` 鎸夋墍閫夋ā寮忔敞鍏?AGENTS.md 鍐呭锛堥绠楁埅鏂紝榛樿 4096 瀛楄妭锛?|
-| 妯″紡鎺у埗 | 浜旀。锛?*姣?5 杞?/ 姣?11 杞?/ 姣?15 杞?/ 姣忔鍘嬬缉鍚庯紙鍚檵鍗囧悗锛岄粯璁わ級/ 涓嶆敞鍏?* 鈥斺€?GUI 涓嬫媺瀹炴椂鍙皟锛屼笅涓€娆℃敞鍏ョ敓鏁?|
+| 请求 #1（未晋升） | 与 anchored-standard 相同：仅 Minimal 工具对，**不注入任何上下文**（锚定保留） |
+| 晋升后（首次工具调用或首次回复后） | `context-injector` 按所选模式注入 AGENTS.md 内容（预算截断，默认 4096 字节） |
+| 模式控制 | 五档：**每 5 轮 / 每 11 轮 / 每 15 轮 / 每次压缩后（含晋升后，默认）/ 不注入** —— GUI 下拉实时可调，下一次注入生效 |
 
-**銆屼竴杞€嶈涔夛紙娑堟伅绾э級**锛氫竴鏉＄敤鎴锋寚浠よ涓€杞紱涓€娆℃ā鍨嬫枃鏈洖澶嶄篃璁颁竴杞紱
-宸ュ叿璋冪敤涓棿娑堟伅**涓嶈鏁?*锛堜緥锛氭ā鍨嬪洖绛斾袱娆°€佹偍鍙戝嚭绗笁鏉℃寚浠ゅ悗 = 绗?5 杞?鈫?瑙﹀彂娉ㄥ叆锛夈€?
+**「一轮」语义（消息级）**：一条用户指令记一轮；一次模型文本回复也记一轮；
+工具调用中间消息**不计数**（例：模型回答两次、您发出第三条指令后 = 第 5 轮 → 触发注入）。
 
-**銆屾瘡娆″帇缂╁悗銆嶈涔?*锛氭檵鍗囧悗娉ㄥ叆涓€娆★紱涔嬪悗姣忔涓婁笅鏂囧帇缂╋紙compaction/end锛夊悗閲嶆柊娉ㄥ叆涓€娆♀€斺€斾笉鎸夎疆娆¤鏁般€?
+**「每次压缩后」语义**：晋升后注入一次；之后每次上下文压缩（compaction/end）后重新注入一次——不按轮次计数。
 
-## 渚濊禆椤圭洰锛堝繀椤诲厛琛屽畨瑁咃級
+## 依赖项目（必须先行安装）
 
-- **[xiaobright/dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard)**锛圡IT锛?
-  - 鎻愪緵鏈敼鐗堢殑鍩虹锛歚anchored-standard` 涓婚璁剧殑缁勮楠ㄦ灦銆乣tool-bootstrap` 鏅嬪崌鏈哄埗銆?
-    鍏变韩妯″潡 `compaction-epoch.mjs`锛坋poch 鏅嬪崌鍒ゅ畾锛夌瓑锛?
-  - **鏈」鐩殑 `preset/anchored-standard-ci/` 鏄?澧為噺 overlay"**锛屼笉鍚叾浠撳簱鏁翠綋鍐呭锛?
-    瀹夎椤哄簭锛?*鍏堟寜渚濊禆浠撳簱 README 瀹夎 anchored-standard锛屽啀瀹夎鏈」鐩?*銆?
-- 鍙€夛細`dsh-plugin-vision`锛堣瑙夊伐鍏凤級鈥斺€擿agent.cordis.yml` 涓?`residentTools` 宸蹭负鍏堕鐣欍€?
+- **[xiaobright/dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard)**（MIT）
+  - 提供本改版的基础：`anchored-standard` 主预设的组装骨架、`tool-bootstrap` 晋升机制、
+    共享模块 `compaction-epoch.mjs`（epoch 晋升判定）等；
+  - **本项目的 `preset/anchored-standard-ci/` 是"增量 overlay"**，不含其仓库整体内容；
+    安装顺序：**先按依赖仓库 README 安装 anchored-standard，再安装本项目**。
+- 可选：`dsh-plugin-vision`（视觉工具）——`agent.cordis.yml` 中 `residentTools` 已为其预留。
 
-## 鏂囦欢娓呭崟涓庢潵婧愭爣娉?
+## 文件清单与来源标注
 
-| 鏂囦欢 | 鏉ユ簮 |
+| 文件 | 来源 |
 |---|---|
-| `preset/anchored-standard-ci/agent.cordis.yml` | **鍩轰簬渚濊禆椤圭洰鏂囦欢淇敼**锛堟柊澧?context-injector 琛屻€乺esidentTools銆佷腑鏂囨敞閲婏級 |
-| `preset/anchored-standard-ci/preset.yml` | 鏈」鐩紙鏄剧ず鍚嶏細閿氬畾鏍囧噯锛堜笂涓嬫枃娉ㄥ叆锛夛級 |
-| `preset/anchored-standard-ci/context-injector.mjs` | **鏈」鐩師鍒?*锛堟寜瀵硅瘽杞娉ㄥ叆鎻掍欢锛?|
-| `preset/anchored-standard-ci/tool-bootstrap.mjs` | **鍩轰簬渚濊禆椤圭洰鏂囦欢淇敼**锛堟柊澧?`residentTools` 閰嶇疆椤癸細鏅嬪崌鍚庡父椹婚澶栧伐鍏凤級 |
-| `preset/anchored-standard-ci/compaction-epoch.mjs` | **鏉ヨ嚜渚濊禆椤圭洰**锛圡IT锛屾湭淇敼锛涜繍琛屼緷璧栵紝闅忓寘闄勫甫锛?|
-| `test/context-injector.test.mjs` | 鏈」鐩師鍒涳紙15 涓祴璇曪細杞璁℃暟/瑕嗙洊鏂囦欢/compaction 閲嶇疆/瀹归敊锛?|
-| `ci-control/` | 鏈」鐩師鍒涳紙娉ㄥ叆棰戞閫夋嫨鍣ㄩ潤鎬佸寘锛歨ost Remote 鏈嶅姟 + client 宸ュ叿琛?UI锛?|
+| `preset/anchored-standard-ci/agent.cordis.yml` | **基于依赖项目文件修改**（新增 context-injector 行、residentTools、中文注释） |
+| `preset/anchored-standard-ci/preset.yml` | 本项目（显示名：锚定标准（上下文注入）） |
+| `preset/anchored-standard-ci/context-injector.mjs` | **本项目原创**（五档注入模式插件：turns 5/11/15、compaction、off） |
+| `preset/anchored-standard-ci/tool-bootstrap.mjs` | **基于依赖项目文件修改**（新增 `residentTools` 配置项：晋升后常驻额外工具） |
+| `preset/anchored-standard-ci/compaction-epoch.mjs` | **来自依赖项目**（MIT，未修改；运行依赖，随包附带） |
+| `test/context-injector.test.mjs` | 本项目原创（15 个测试：消息级计数/tool-call 排除/五档解析/覆盖文件/compaction 重置/容错） |
+| `ci-control/` | 本项目原创（注入模式选择器静态包：host Remote 服务 + client 工具行 UI） |
 
-## 瀹夎
+## 安装
 
-### 1. 瀹夎渚濊禆
+### 1. 安装依赖
 
-鎸?[dsh-anchored-standard README](https://github.com/xiaobright/dsh-anchored-standard) 瀹夎
-`anchored-standard` 棰勮鍒?`$DSH_HOME/.agent-presets/anchored-standard`銆?
+按 [dsh-anchored-standard README](https://github.com/xiaobright/dsh-anchored-standard) 安装
+`anchored-standard` 预设到 `$DSH_HOME/.agent-presets/anchored-standard`。
 
-### 2. 瀹夎鏈璁?
+### 2. 安装本预设
 
-灏?`preset/anchored-standard-ci` 澶嶅埗鍒?`$DSH_HOME/.agent-presets/anchored-standard-ci`锛?
+将 `preset/anchored-standard-ci` 复制到 `$DSH_HOME/.agent-presets/anchored-standard-ci`：
 
 ```powershell
 $target = Join-Path $env:USERPROFILE '.dsh\.agent-presets\anchored-standard-ci'
 Copy-Item -Recurse -LiteralPath '.\preset\anchored-standard-ci' -Destination $target
 ```
 
-### 3. 瀹夎娉ㄥ叆棰戞閫夋嫨鍣紙ci-control锛屽彲閫変絾鎺ㄨ崘锛?
+### 3. 安装注入模式选择器（ci-control，可选但推荐）
 
-鍙傜収 `dsh-usage-column` 鐨勬帴鍏ユā寮忥細
+参照 `dsh-usage-column` 的接入模式：
 
-1. 鎶?`ci-control` 鐩綍澶嶅埗鍒?`$DSH_HOME\profiles\web\packages\ci-control`锛?
-   骞跺湪 `$DSH_HOME\profiles\web\node_modules` 寤虹珛閾炬帴
-   锛坄New-Item -ItemType Junction -Path ...\node_modules\ci-control -Target ...\packages\ci-control`锛夛紱
-2. 鍦?`$DSH_HOME\profiles\web\cordis.patch.yml` 杩藉姞锛?
+1. 把 `ci-control` 目录复制到 `$DSH_HOME\profiles\web\packages\ci-control`，
+   并在 `$DSH_HOME\profiles\web\node_modules` 建立链接
+   （`New-Item -ItemType Junction -Path ...\node_modules\ci-control -Target ...\packages\ci-control`）；
+2. 在 `$DSH_HOME\profiles\web\cordis.patch.yml` 追加：
 
    ```yaml
    - insert:
@@ -78,57 +78,57 @@ Copy-Item -Recurse -LiteralPath '.\preset\anchored-standard-ci' -Destination $ta
          name: ci-control
    ```
 
-3. **閲嶅惎 DSH**锛坧rofile 灞傛敼鍔ㄩ渶閲嶅惎鍔犺浇 client bundle锛夈€?
+3. **重启 DSH**（profile 层改动需重启加载 client bundle）。
 
-### 4. 楠岃瘉
+### 4. 验证
 
 ```sh
-npm test            # 鎴?node --test test/  锛坈ontext-injector 鍗曞厓娴嬭瘯锛?
+npm test            # 或 node --test test/  （context-injector 单元测试）
 node --check preset/anchored-standard-ci/*.mjs ci-control/lib/*.js
 ```
 
-## 浣跨敤
+## 使用
 
-1. 鏂板缓绌虹櫧浼氳瘽锛岄璁鹃€夋嫨鍣ㄤ腑閫夋嫨 **閿氬畾鏍囧噯锛堜笂涓嬫枃娉ㄥ叆锛?*锛?
-2. 浼氳瘽宸ュ叿琛屽彸绔嚭鐜?**`娉ㄥ叆妯″紡 鈻綻** 涓嬫媺锛堜粎璇ラ璁句細璇濇樉绀猴級锛?
-   **姣忔鍘嬬缉鍚庯紙鍚檵鍗囧悗锛? 姣?5 杞?/ 姣?11 杞?/ 姣?15 杞?/ 涓嶆敞鍏?*锛?
-3. 閫夋嫨鍗冲啓鍏?`$DSH_HOME/.context-injector.json`锛?*涓嬩竴娆℃敞鍏ョ敓鏁?*锛堟棤闇€閲嶅惎锛夛紱
-4. 棣栬疆浠嶅彧鏈?`bash` + `str_replace_editor`锛涙檵鍗囧悗鎸夋墍閫夋ā寮忔敞鍏?AGENTS.md 鍐呭銆?
+1. 新建空白会话，预设选择器中选择 **锚定标准（上下文注入）**；
+2. 会话工具行右端出现 **`注入模式 ▾`** 下拉（仅该预设会话显示）：
+   **每次压缩后（含晋升后）/ 每 5 轮 / 每 11 轮 / 每 15 轮 / 不注入**；
+3. 选择即写入 `$DSH_HOME/.context-injector.json`，**下一次注入生效**（无需重启）；
+4. 首轮仍只有 `bash` + `str_replace_editor`；晋升后按所选模式注入 AGENTS.md 内容。
 
-## 鏁呴殰鎺掓煡
+## 故障排查
 
-- **娉ㄥ叆妯″紡閫夋嫨鍣ㄦ湭鍑虹幇**锛氶儴鍒嗘儏鍐典笅锛堝 DSH 閲嶅惎鍚庣殑灏辩华绐楀彛寮傚父銆佹祻瑙堝櫒
-  bundle 缂撳瓨鏈洿鏂帮級锛岄€夋嫨鍣ㄥ彲鑳芥棤娉曡嚜鍔ㄦ媺璧封€斺€?*鎸?`Ctrl+R` 鍒锋柊椤甸潰鍗冲彲鎭㈠**
-  锛堜粛涓嶅嚭鐜版椂鐢?`Ctrl+Shift+R` 寮哄埗鍒锋柊锛夛紱
-- 纭褰撳墠浼氳瘽纭疄杩愯銆岄敋瀹氭爣鍑嗭紙涓婁笅鏂囨敞鍏ワ級銆嶉璁撅紙璇ラ€夋嫨鍣ㄤ粎姝ら璁炬樉绀猴級锛?
-- 妫€鏌?`C:\Users\<鐢ㄦ埛>\.dsh\.context-injector.json` 鏄惁瀛樺湪锛屽唴瀹瑰簲涓?
-  `{"mode":"turns","interval":5}`銆乣{"mode":"compaction"}` 鎴?`{"mode":"off"}`
-  锛堟棫鏍煎紡 `{"interval":N}` 鎸?turns 瑙ｆ瀽锛夛紱缂哄け鏃舵寜 `agent.cordis.yml` 榛樿
-  `mode: compaction` 鎵ц銆?
+- **注入模式选择器未出现**：部分情况下（如 DSH 重启后的就绪窗口异常、浏览器
+  bundle 缓存未更新），选择器可能无法自动拉起——**按 `Ctrl+R` 刷新页面即可恢复**
+  （仍不出现时用 `Ctrl+Shift+R` 强制刷新）；
+- 确认当前会话确实运行「锚定标准（上下文注入）」预设（该选择器仅此预设显示）；
+- 检查 `C:\Users\<用户>\.dsh\.context-injector.json` 是否存在，内容应为
+  `{"mode":"turns","interval":5}`、`{"mode":"compaction"}` 或 `{"mode":"off"}`
+  （旧格式 `{"interval":N}` 按 turns 解析）；缺失时按 `agent.cordis.yml` 默认
+  `mode: compaction` 执行。
 
-## 璁捐瑕佺偣
+## 设计要点
 
-- **棣栬疆閿氬畾涓嶅Ε鍗?*锛歚context-injector` 鍙湪鏅嬪崌鍚庢敞鍏ワ紝鏅嬪崌鍓嶄笌 anchored-standard 瀹屽叏涓€鑷达紱
-- **浜旀。妯″紡**锛?
-  - `turns`锛氭瘡 `interval` 鏉℃秷鎭敞鍏ワ紙涓€鏉℃寚浠ゆ垨涓€娆℃ā鍨嬫枃鏈洖澶?涓€杞紱宸ュ叿璋冪敤涓棿娑堟伅涓嶈鏁帮級锛?
-  - `compaction`锛堥粯璁わ級锛氭檵鍗囧悗娉ㄥ叆涓€娆★紝涔嬪悗姣忔涓婁笅鏂囧帇缂╁悗閲嶆柊娉ㄥ叆涓€娆★紱
-  - `off`锛氫笉娉ㄥ叆锛?
-- **瑕嗙洊鏂囦欢浼樺厛**锛歚$DSH_HOME/.context-injector.json` 瑕嗙洊 `agent.cordis.yml` 閰嶇疆
-  锛堥潪娉曞€煎洖閫€閰嶇疆锛夛紱
-- **瀹归敊**锛氭枃浠剁己澶?璇诲彇澶辫触/鎻掍欢寮傚父涓€寰嬭烦杩囨敞鍏ワ紝缁濅笉闃诲浼氳瘽锛?
-- **GUI 灏辩华閲嶈瘯**锛氶噸鍚悗 host/杩炴帴瀛樺湪灏辩华绐楀彛锛岄€夋嫨鍣ㄨ嚜鍔ㄩ噸璇曠洿鑷冲嚭鐜帮紱
-- **鍙€夎瑙夊伐鍏?*锛歚residentTools: [see_image, vision_set_key, vision_status]`
-  浣挎檵鍗囧悗鐩綍鐩存帴鍖呭惈 dsh-plugin-vision 鐨勫伐鍏凤紙鍏?`dev_tool_search` 瑙ｉ攣锛夈€?
+- **首轮锚定不妥协**：`context-injector` 只在晋升后注入，晋升前与 anchored-standard 完全一致；
+- **五档模式**：
+  - `turns`：每 `interval` 条消息注入（一条指令或一次模型文本回复=一轮；工具调用中间消息不计数）；
+  - `compaction`（默认）：晋升后注入一次，之后每次上下文压缩后重新注入一次；
+  - `off`：不注入；
+- **覆盖文件优先**：`$DSH_HOME/.context-injector.json` 覆盖 `agent.cordis.yml` 配置
+  （非法值回退配置）；
+- **容错**：文件缺失/读取失败/插件异常一律跳过注入，绝不阻塞会话；
+- **GUI 就绪重试**：重启后 host/连接存在就绪窗口，选择器自动重试直至出现；
+- **可选视觉工具**：`residentTools: [see_image, vision_set_key, vision_status]`
+  使晋升后目录直接包含 dsh-plugin-vision 的工具（免 `dev_tool_search` 解锁）。
 
-## 鍏煎鎬?
+## 兼容性
 
-- 鐩爣锛欴eepSeek Harness锛?.1.0-rc.5+ 缁撴瀯锛宺c.6 profile 瀹炴祴閫氳繃锛夈€乄indows / Linux锛?
-- 鏈満瀹炴祴妯″瀷 deepseek-v4-flash锛堥敋瀹氭晥鏋滃洜妯″瀷鑰屽紓锛屽弬瑙佷緷璧栦粨搴撶殑璇勬祴璇存槑锛夛紱
-- `agent.cordis.yml` 涓?`bootstrapMaxTokens` 鏈惎鐢紙瑙勯伩棰勬瀯寤?profile 鐨?maxTokens 瑕嗙洊闂锛夈€?
+- 目标：DeepSeek Harness（0.1.0-rc.5+ 结构，rc.6 profile 实测通过）、Windows / Linux；
+- 本机实测模型 deepseek-v4-flash（锚定效果因模型而异，参见依赖仓库的评测说明）；
+- `agent.cordis.yml` 中 `bootstrapMaxTokens` 未启用（规避预构建 profile 的 maxTokens 覆盖问题）。
 
-## 鐗堟潈涓庤鍙?
+## 版权与许可
 
-- **MIT**锛堟湰椤圭洰鍘熷垱閮ㄥ垎锛夛紱
-- `compaction-epoch.mjs` 涓?`agent.cordis.yml`/`tool-bootstrap.mjs` 鐨勪慨鏀瑰熀绾?
-  鏉ヨ嚜 [xiaobright/dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard)锛圡IT锛夛紝
-  鍘熷 DeepSeek 鐗堟潈涓庤鍙０鏄庤璇ヤ粨搴?`NOTICE`锛涜閬靛畧鍏惰鍙潯娆俱€?
+- **MIT**（本项目原创部分）；
+- `compaction-epoch.mjs` 与 `agent.cordis.yml`/`tool-bootstrap.mjs` 的修改基线
+  来自 [xiaobright/dsh-anchored-standard](https://github.com/xiaobright/dsh-anchored-standard)（MIT），
+  原始 DeepSeek 版权与许可声明见该仓库 `NOTICE`；请遵守其许可条款。
